@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+streamlit
+psycopg2-binary   # PostgreSQL connector
+SQLAlchemy
+qdrant-client
+sentence-transformers
+transformers
+torch
+tesseract
+python-docx
+pymupdf           # For PDFs
