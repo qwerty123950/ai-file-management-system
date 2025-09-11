@@ -1,12 +1,15 @@
-fastapi
-uvicorn
-streamlit
-psycopg2-binary   # PostgreSQL connector
-SQLAlchemy
-qdrant-client
-sentence-transformers
-transformers
-torch
-tesseract
-python-docx
-pymupdf           # For PDFs
+fastapi==0.115.0
+uvicorn==0.23.2
+streamlit==1.28.2
+
+psycopg2-binary==2.9.9
+SQLAlchemy==2.0.21
+
+qdrant-client==1.8.2
+sentence-transformers==2.2.2
+transformers==4.33.2
+torch==2.0.1
+
+pytesseract==0.3.10
+python-docx==0.8.11
+pymupdf==1.23.5
