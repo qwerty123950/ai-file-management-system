@@ -1,1 +1,1 @@
-Place test PDFs/images here
+Place test PDFs/images here in this folder named sample_docs
