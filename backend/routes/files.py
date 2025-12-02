@@ -9,6 +9,8 @@ from backend.services.file_service import (
     search_files,
     get_all_files,
     summarize_file_by_mode,
+    find_similar_files,
+    check_duplicates,
 )
 
 router = APIRouter()
@@ -57,3 +59,22 @@ def get_file_summary(file_id: int, mode: str = "medium"):
         raise HTTPException(status_code=400, detail="Invalid mode. Use short|medium|long")
     summary = summarize_file_by_mode(file_id, mode)
     return {"file_id": file_id, "mode": mode, "summary": summary}
+
+
+@router.get("/files/{file_id}/similar")
+def similar_files(file_id: int, top_k: int = 5):
+    """
+    Return the most similar other documents to this file.
+    """
+    similar = find_similar_files(file_id, top_k=top_k)
+    return {"file_id": file_id, "similar": similar}
+
+
+@router.get("/files/{file_id}/duplicates")
+def duplicate_files(file_id: int, threshold: float = 0.9):
+    """
+    Return potential duplicates of this file.
+    threshold is a similarity cutoff (0.0 - 1.0). Higher means stricter.
+    """
+    dups = check_duplicates(file_id, threshold=threshold)
+    return {"file_id": file_id, "threshold": threshold, "duplicates": dups}

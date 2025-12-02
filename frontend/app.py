@@ -47,11 +47,11 @@ if st.button("Search"):
         st.error("Search failed")
 
 # ------------------------
-# All uploaded files + summaries
+# All uploaded files + dynamic summaries + relations
 # ------------------------
 st.header("All Uploaded Files & Summaries")
 
-if st.button("Show All Files"):
+if st.button("Refresh File List"):
     response = requests.get(f"{BACKEND_URL}/api/files")
     if response.status_code == 200:
         data = response.json()
@@ -63,8 +63,78 @@ if st.button("Show All Files"):
                 st.subheader(f["filename"])
                 st.write(f"**ID:** {f['id']}")
                 st.write(f"**Path:** {f['filepath']}")
-                st.caption(f"Summary type: {f.get('summary_type', 'unknown')}")
-                st.write(f["summary"])
+                st.caption(f"Stored summary type: {f.get('summary_type', 'unknown')}")
+
+                # Stored default (medium) summary
+                with st.expander("Stored Summary (default medium)"):
+                    st.write(f["summary"])
+
+                # Dynamic summary modes
+                st.markdown("**Generate Custom Summary:**")
+                mode = st.radio(
+                    "Summary length",
+                    ["short", "medium", "long"],
+                    horizontal=True,
+                    key=f"mode_{f['id']}",
+                )
+
+                if st.button("Show summary", key=f"show_{f['id']}"):
+                    resp = requests.get(
+                        f"{BACKEND_URL}/api/files/{f['id']}/summary",
+                        params={"mode": mode},
+                    )
+                    if resp.status_code == 200:
+                        dyn = resp.json()
+                        st.write(f"**{mode.capitalize()} summary:**")
+                        st.write(dyn["summary"])
+                    else:
+                        st.error("Failed to generate summary")
+
+                # Similar documents
+                st.markdown("**Related Documents:**")
+                cols = st.columns(2)
+
+                with cols[0]:
+                    if st.button("Show similar files", key=f"sim_{f['id']}"):
+                        resp = requests.get(
+                            f"{BACKEND_URL}/api/files/{f['id']}/similar",
+                            params={"top_k": 5},
+                        )
+                        if resp.status_code == 200:
+                            data_sim = resp.json()
+                            sims = data_sim.get("similar", [])
+                            if not sims:
+                                st.info("No similar files found.")
+                            else:
+                                for s in sims:
+                                    st.write(
+                                        f"- {s['filename']} "
+                                        f"(Score: {s['score']:.3f}, ID: {s['id']})"
+                                    )
+                        else:
+                            st.error("Failed to fetch similar files")
+
+                with cols[1]:
+                    if st.button("Show duplicates", key=f"dup_{f['id']}"):
+                        resp = requests.get(
+                            f"{BACKEND_URL}/api/files/{f['id']}/duplicates",
+                            params={"threshold": 0.9},
+                        )
+                        if resp.status_code == 200:
+                            data_dup = resp.json()
+                            dups = data_dup.get("duplicates", [])
+                            if not dups:
+                                st.info("No duplicates (above threshold) found.")
+                            else:
+                                st.write("Potential duplicates:")
+                                for d in dups:
+                                    st.write(
+                                        f"- {d['filename']} "
+                                        f"(Score: {d['score']:.3f}, ID: {d['id']})"
+                                    )
+                        else:
+                            st.error("Failed to fetch duplicates")
+
                 st.write("---")
     else:
         st.error("Could not fetch uploaded files")

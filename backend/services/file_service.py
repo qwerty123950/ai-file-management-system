@@ -15,7 +15,6 @@ from ai.summarizer import summarize_text, summarize_with_sentence_limit
 from ai.deduplication import is_duplicate  # even if unused for now
 from ai.preprocess import clean_text
 
-
 # Make the DB path absolute and consistent
 DATABASE_PATH = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "database", "database.db")
@@ -90,12 +89,10 @@ def _split_into_chunks(text: str, max_chars: int = 1000, min_chars: int = 200) -
     current = ""
 
     for para in paragraphs:
-        # If adding this paragraph would exceed max_chars, push current as a chunk
         if current and len(current) + len(para) + 2 > max_chars:
             if len(current) >= min_chars or not chunks:
                 chunks.append(current.strip())
             else:
-                # If current is too small, merge with next anyway
                 current = current + "\n\n" + para
                 chunks.append(current.strip())
                 current = ""
@@ -105,7 +102,6 @@ def _split_into_chunks(text: str, max_chars: int = 1000, min_chars: int = 200) -
     if current:
         chunks.append(current.strip())
 
-    # Fallback: if still nothing, just return the whole text
     if not chunks:
         return [text]
 
@@ -133,7 +129,6 @@ def process_file(file_path, filename):
     )
 
     if not has_real_text:
-        # Nothing meaningful to summarize
         print("[process_file] No extractable text, using placeholder summary")
         content = ""  # store empty content
         summary = "No extractable text found in this document."
@@ -141,7 +136,6 @@ def process_file(file_path, filename):
         embedding_source = "empty document"
         chunks = []
     else:
-        # Use cleaned text if available; otherwise, raw
         content = cleaned if cleaned and cleaned.strip() else raw_content
 
         # 3) Summarize (stored default = medium)
@@ -165,7 +159,7 @@ def process_file(file_path, filename):
         embedding_source = content
         chunks = _split_into_chunks(content)
 
-    # 4) Generate embedding for the whole document (optional but useful)
+    # 4) Generate embedding for the whole document
     embedding = generate_embedding(embedding_source)
     print(f"[process_file] doc-level embedding length: {len(embedding)}")
 
@@ -183,20 +177,20 @@ def process_file(file_path, filename):
 
     print(f"[process_file] Stored file in DB with id={file_id}")
 
-    # 6) Store chunk embeddings in Qdrant
+    # 6) Store embeddings in Qdrant
     points: List[PointStruct] = []
 
-    # Optional: doc-level point
+    # Doc-level point
     points.append(
         PointStruct(
-            id=int(file_id),  # numeric id for doc-level
+            id=int(file_id),
             vector=embedding,
             payload={
                 "file_id": file_id,
                 "filename": filename,
                 "is_doc_level": True,
                 "chunk_index": -1,
-                "text": summary,  # store summary as doc-level text
+                "text": summary,  # doc-level text = summary
             },
         )
     )
@@ -204,11 +198,14 @@ def process_file(file_path, filename):
     # Chunk-level points
     for idx, chunk_text in enumerate(chunks):
         chunk_emb = generate_embedding(chunk_text)
-        # Use string ID to avoid collision with doc-level int IDs
-        point_id = f"{file_id}_{idx}"
+
+        # Integer IDs for chunks: avoid collision with doc-level id=file_id
+        # Assumes < 10_000 chunks per file, which is plenty.
+        chunk_point_id = file_id * 10_000 + idx
+
         points.append(
             PointStruct(
-                id=point_id,
+                id=chunk_point_id,
                 vector=chunk_emb,
                 payload={
                     "file_id": file_id,
@@ -219,6 +216,7 @@ def process_file(file_path, filename):
                 },
             )
         )
+
 
     if points:
         client.upsert(collection_name="files", points=points)
@@ -268,7 +266,6 @@ def search_files(query, top_k=5):
     - best matching snippet (chunk)
     """
     query_emb = generate_embedding(query)
-    # Search more chunks than final files, to allow grouping
     raw_results = client.search(
         collection_name="files",
         query_vector=query_emb,
@@ -286,24 +283,20 @@ def search_files(query, top_k=5):
 
         score = r.score
         text = payload.get("text", "")
-        is_doc_level = payload.get("is_doc_level", False)
 
         if file_id not in agg or score > agg[file_id]["score"]:
             agg[file_id] = {
                 "file_id": file_id,
                 "score": score,
                 "best_snippet": text,
-                "is_doc_level": is_doc_level,
             }
 
     if not agg:
         return []
 
-    # Get DB metadata for these files
     file_ids = list(agg.keys())
     meta_map = _get_file_metadata_map(file_ids)
 
-    # Merge and sort
     merged: List[Dict[str, Any]] = []
     for fid, info in agg.items():
         meta = meta_map.get(fid)
@@ -367,42 +360,109 @@ def summarize_file_by_mode(file_id: int, mode: str) -> str:
     content, summary_type = row
 
     if not content or not content.strip():
-        # This is an "empty" or placeholder document
         return "No extractable text found in this document."
 
     if mode == "short":
         sentences = 1
     elif mode == "medium":
         sentences = 2
-    else:  # "long"
+    else:
         sentences = 4
 
     summary = summarize_with_sentence_limit(content, sentences=sentences)
     if not summary:
-        # Fallback to content slice
         summary = (content[:400] + "...") if len(content) > 400 else content
 
     return summary
 
 
-def check_duplicates(file_id):
+def find_similar_files(file_id: int, top_k: int = 5) -> List[Dict[str, Any]]:
     """
-    Placeholder for duplicate check. Later, you can:
-    - Use Qdrant similarity search on the new file's embedding
-    - Compare top result score with a threshold
+    Use embeddings + Qdrant to find the most similar other documents to this file.
+    Only compares doc-level vectors (not chunks).
     """
+    # 1) Get content for this file
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
-    cursor.execute("SELECT id FROM files WHERE id != ?", (file_id,))
-    other_ids = [row[0] for row in cursor.fetchall()]
+    cursor.execute("SELECT content FROM files WHERE id = ?", (file_id,))
+    row = cursor.fetchone()
     conn.close()
 
-    if not other_ids:
+    if row is None:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    content = row[0]
+    if not content or not content.strip():
+        # nothing to compare on
         return []
 
-    duplicates = []
-    # TODO: implement using Qdrant search + is_duplicate threshold
-    for oid in other_ids:
-        pass
+    # 2) Embed this document
+    query_emb = generate_embedding(content)
 
+    # 3) Search in Qdrant. We will later filter to is_doc_level=True and other file_ids.
+    raw_results = client.search(
+        collection_name="files",
+        query_vector=query_emb,
+        limit=top_k * 5,
+        with_payload=True,
+    )
+
+    # 4) Keep only doc-level matches from other files
+    candidates: List[Dict[str, Any]] = []
+    seen: set[int] = set()
+
+    for r in raw_results:
+        payload = r.payload or {}
+        fid = payload.get("file_id")
+        if fid is None:
+            continue
+        if fid == file_id:
+            continue  # skip self
+        if payload.get("is_doc_level") is not True:
+            continue  # only use doc-level points
+
+        if fid in seen:
+            continue
+        seen.add(fid)
+        candidates.append({"file_id": fid, "score": r.score})
+
+        if len(candidates) >= top_k:
+            break
+
+    if not candidates:
+        return []
+
+    # 5) Fetch metadata for these files
+    cand_ids = [c["file_id"] for c in candidates]
+    meta_map = _get_file_metadata_map(cand_ids)
+
+    results: List[Dict[str, Any]] = []
+    for c in candidates:
+        fid = c["file_id"]
+        meta = meta_map.get(fid)
+        if not meta:
+            continue
+        results.append(
+            {
+                "id": fid,
+                "filename": meta["filename"],
+                "summary": meta["summary"],
+                "summary_type": meta["summary_type"],
+                "score": c["score"],
+            }
+        )
+
+    # Sort by score descending (most similar first)
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return results
+
+
+def check_duplicates(file_id: int, threshold: float = 0.9) -> List[Dict[str, Any]]:
+    """
+    Return files that are very similar to the given file (potential duplicates).
+    Uses find_similar_files and filters by a similarity score threshold.
+    """
+    similar = find_similar_files(file_id, top_k=20)
+    # For cosine similarity in Qdrant with Distance.COSINE, higher = more similar (0..1)
+    duplicates = [s for s in similar if s["score"] >= threshold]
     return duplicates
