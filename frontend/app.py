@@ -34,8 +34,14 @@ if st.button("Search"):
             st.info("No matching files found.")
         for res in results:
             st.subheader(f"{res['filename']}  (Score: {res['score']:.2f})")
-            st.caption(f"Summary type: {res.get('summary_type', 'unknown')}")
-            st.write(res["summary"])
+            st.caption(f"Stored summary type: {res.get('summary_type', 'unknown')}")
+
+            st.markdown("**Best matching snippet:**")
+            st.write(res.get("snippet", ""))
+
+            with st.expander("Stored Summary (default medium)"):
+                st.write(res["summary"])
+
             st.write("---")
     else:
         st.error("Search failed")

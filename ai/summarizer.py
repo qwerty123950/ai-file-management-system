@@ -5,7 +5,7 @@ import re
 
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 
-# Summarization model (free)
+# Summarization model
 MODEL_NAME = "google/pegasus-xsum"
 # If you want a long-doc model later:
 # MODEL_NAME = "pszemraj/long-t5-tglobal-base-16384-book-summary"
@@ -117,7 +117,6 @@ def _dedupe_sentences(text: str) -> str:
     return " ".join(unique)
 
 
-
 def _summarize_single(text: str, mode: str = "medium") -> str:
     """
     Summarize a single piece of text that already fits into the model capacity.
@@ -179,3 +178,33 @@ def summarize_text(text: str, mode: str = "medium") -> str:
     # For the combined summary, we can reuse the same logic
     final_summary = _summarize_single(combined, mode=mode)
     return final_summary
+
+
+def summarize_with_sentence_limit(text: str, sentences: int) -> str:
+    """
+    Generate a summary, then trim it to a specific number of sentences.
+    sentences:
+        1 -> short
+        2 -> medium
+        4 -> long
+    """
+    if sentences <= 0:
+        sentences = 1
+
+    if sentences == 1:
+        mode = "short"
+    elif sentences == 2:
+        mode = "medium"
+    else:
+        mode = "long"
+
+    base = summarize_text(text, mode=mode).strip()
+    if not base:
+        return base
+
+    parts = re.split(r'(?<=[.!?])\s+', base)
+    parts = [p.strip() for p in parts if p.strip()]
+    if not parts:
+        return base
+
+    return " ".join(parts[:sentences])

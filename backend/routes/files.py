@@ -1,4 +1,6 @@
-from fastapi import APIRouter, UploadFile, File
+# backend/routes/files.py
+
+from fastapi import APIRouter, UploadFile, File, HTTPException
 import shutil
 import os
 
@@ -6,6 +8,7 @@ from backend.services.file_service import (
     process_file,
     search_files,
     get_all_files,
+    summarize_file_by_mode,
 )
 
 router = APIRouter()
@@ -39,3 +42,18 @@ def search(query: str, top_k: int = 5):
 def list_files():
     files = get_all_files()
     return {"files": files}
+
+
+@router.get("/files/{file_id}/summary")
+def get_file_summary(file_id: int, mode: str = "medium"):
+    """
+    Get a dynamic summary for a file with a given mode:
+    - short  -> 1 sentence
+    - medium -> 2 sentences
+    - long   -> 4 sentences
+    """
+    mode = mode.lower()
+    if mode not in ("short", "medium", "long"):
+        raise HTTPException(status_code=400, detail="Invalid mode. Use short|medium|long")
+    summary = summarize_file_by_mode(file_id, mode)
+    return {"file_id": file_id, "mode": mode, "summary": summary}
