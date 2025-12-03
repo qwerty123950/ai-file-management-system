@@ -23,11 +23,36 @@ QDRANT_URL = "http://localhost:6333"  # Assuming local Qdrant
 
 client = QdrantClient(url=QDRANT_URL)
 
+def ensure_db():
+    """
+    Make sure the database file and `files` table exist.
+    Safe to call many times.
+    """
+    os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
+
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            filename TEXT NOT NULL,
+            filepath TEXT NOT NULL,
+            content TEXT,
+            summary TEXT,
+            summary_type TEXT
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
+
 
 def init_db():
     """Create the database directory and files table if they don't exist."""
     os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
 
+    ensure_db()
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
 
@@ -136,6 +161,7 @@ def process_file(file_path, filename):
         embedding_source = "empty document"
         chunks = []
     else:
+        # Prefer cleaned text if available, otherwise raw
         content = cleaned if cleaned and cleaned.strip() else raw_content
 
         # 3) Summarize (stored default = medium)
@@ -163,7 +189,8 @@ def process_file(file_path, filename):
     embedding = generate_embedding(embedding_source)
     print(f"[process_file] doc-level embedding length: {len(embedding)}")
 
-    # 5) Store in SQLite DB
+    # 5) Ensure DB + table exist, then store in SQLite DB
+    ensure_db()
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     cursor.execute(
@@ -177,10 +204,10 @@ def process_file(file_path, filename):
 
     print(f"[process_file] Stored file in DB with id={file_id}")
 
-    # 6) Store embeddings in Qdrant
+    # 6) Build points for Qdrant (doc-level + chunk-level)
     points: List[PointStruct] = []
 
-    # Doc-level point
+    # Doc-level point: id is the DB id
     points.append(
         PointStruct(
             id=int(file_id),
@@ -195,7 +222,7 @@ def process_file(file_path, filename):
         )
     )
 
-    # Chunk-level points
+    # Chunk-level points (if we have chunks)
     for idx, chunk_text in enumerate(chunks):
         chunk_emb = generate_embedding(chunk_text)
 
@@ -217,7 +244,6 @@ def process_file(file_path, filename):
             )
         )
 
-
     if points:
         client.upsert(collection_name="files", points=points)
         print(f"[process_file] Upserted {len(points)} vectors to Qdrant for file_id={file_id}")
@@ -235,6 +261,7 @@ def _get_file_metadata_map(file_ids: List[int]) -> Dict[int, Dict[str, Any]]:
     if not file_ids:
         return {}
 
+    ensure_db()
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     placeholders = ",".join("?" for _ in file_ids)
@@ -319,6 +346,7 @@ def search_files(query, top_k=5):
 
 def get_all_files():
     """Return all files stored in the DB."""
+    ensure_db()
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     cursor.execute(
@@ -348,6 +376,7 @@ def summarize_file_by_mode(file_id: int, mode: str) -> str:
     if mode not in ("short", "medium", "long"):
         raise HTTPException(status_code=400, detail="Invalid mode")
 
+    ensure_db()
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT content, summary_type FROM files WHERE id = ?", (file_id,))
@@ -382,6 +411,7 @@ def find_similar_files(file_id: int, top_k: int = 5) -> List[Dict[str, Any]]:
     Only compares doc-level vectors (not chunks).
     """
     # 1) Get content for this file
+    ensure_db()
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT content FROM files WHERE id = ?", (file_id,))
