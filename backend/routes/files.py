@@ -11,6 +11,8 @@ from backend.services.file_service import (
     summarize_file_by_mode,
     find_similar_files,
     check_duplicates,
+    delete_file,
+    reindex_all_files,
 )
 
 router = APIRouter()
@@ -78,3 +80,20 @@ def duplicate_files(file_id: int, threshold: float = 0.9):
     """
     dups = check_duplicates(file_id, threshold=threshold)
     return {"file_id": file_id, "threshold": threshold, "duplicates": dups}
+
+@router.delete("/files/{file_id}")
+def delete_file_route(file_id: int):
+    """
+    Delete a file from DB + Qdrant.
+    """
+    result = delete_file(file_id)
+    return {"message": "File deleted", "file": result}
+
+
+@router.post("/reindex")
+def reindex_route():
+    """
+    Rebuild Qdrant index from all files in the SQLite DB.
+    """
+    result = reindex_all_files()
+    return result

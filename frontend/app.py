@@ -51,6 +51,14 @@ if st.button("Search"):
 # ------------------------
 st.header("All Uploaded Files & Summaries")
 
+if st.button("Reindex all files"):
+    resp = requests.post(f"{BACKEND_URL}/api/reindex")
+    if resp.status_code == 200:
+        data = resp.json()
+        st.success(f"Reindexed {data.get('reindexed', 0)} files.")
+    else:
+        st.error("Reindex failed")
+
 if st.button("Refresh File List"):
     response = requests.get(f"{BACKEND_URL}/api/files")
     if response.status_code == 200:
@@ -134,7 +142,14 @@ if st.button("Refresh File List"):
                                     )
                         else:
                             st.error("Failed to fetch duplicates")
-
+                            
+                    # Delete file
+                    if st.button("Delete file", key=f"del_{f['id']}"):
+                        resp = requests.delete(f"{BACKEND_URL}/api/files/{f['id']}")
+                        if resp.status_code == 200:
+                            st.success("File deleted. Click 'Refresh File List' to update.")
+                        else:
+                            st.error("Failed to delete file")
                 st.write("---")
     else:
         st.error("Could not fetch uploaded files")

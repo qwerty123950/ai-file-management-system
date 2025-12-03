@@ -6,7 +6,14 @@ from typing import List, Dict, Any
 
 from fastapi import HTTPException
 from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct, Distance, VectorParams
+from qdrant_client.models import (
+    PointStruct,
+    Distance,
+    VectorParams,
+    Filter,
+    FieldCondition,
+    MatchValue,
+)
 
 # ai package is at the same level as backend
 from ai.ocr import extract_text
@@ -496,3 +503,135 @@ def check_duplicates(file_id: int, threshold: float = 0.9) -> List[Dict[str, Any
     # For cosine similarity in Qdrant with Distance.COSINE, higher = more similar (0..1)
     duplicates = [s for s in similar if s["score"] >= threshold]
     return duplicates
+
+def delete_file(file_id: int):
+    """
+    Delete a file from SQLite and remove all its vectors from Qdrant.
+    """
+    ensure_db()
+
+    # 1) Check if file exists
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT filename FROM files WHERE id = ?", (file_id,))
+    row = cursor.fetchone()
+
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="File not found")
+
+    filename = row[0]
+
+    # 2) Delete from DB
+    cursor.execute("DELETE FROM files WHERE id = ?", (file_id,))
+    conn.commit()
+    conn.close()
+    print(f"[delete_file] Deleted DB row for file_id={file_id} ({filename})")
+
+    # 3) Delete all vectors in Qdrant with this file_id
+    try:
+        client.delete(
+            collection_name="files",
+            points_selector=None,
+            filter=Filter(
+                must=[
+                    FieldCondition(
+                        key="file_id",
+                        match=MatchValue(value=file_id),
+                    )
+                ]
+            ),
+        )
+        print(f"[delete_file] Deleted Qdrant vectors for file_id={file_id}")
+    except Exception as e:
+        print(f"[delete_file] Warning: failed to delete vectors for file_id={file_id}: {e}")
+
+    return {"id": file_id, "filename": filename}
+
+def reindex_all_files():
+    """
+    Rebuild Qdrant index from all rows in the SQLite `files` table.
+    Useful if Qdrant was cleared, changed, or earlier upserts failed.
+    """
+    ensure_db()
+
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, filename, filepath, content, summary, summary_type FROM files"
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    if not rows:
+        print("[reindex_all_files] No files in DB to reindex")
+        return {"reindexed": 0}
+
+    print(f"[reindex_all_files] Reindexing {len(rows)} files")
+
+    # 1) Reset Qdrant collection
+    try:
+        client.delete_collection("files")
+        print("[reindex_all_files] Existing Qdrant collection 'files' deleted")
+    except Exception as e:
+        print("[reindex_all_files] delete_collection failed (maybe doesn't exist):", repr(e))
+
+    # 2) Recreate collection with correct vector size
+    init_qdrant()
+
+    points: List[PointStruct] = []
+
+    for row in rows:
+        fid, filename, filepath, content, summary, summary_type = row
+
+        if content and content.strip():
+            embedding_source = content
+            chunks = _split_into_chunks(content)
+        else:
+            embedding_source = "empty document"
+            chunks = []
+
+        # Doc-level embedding
+        emb = generate_embedding(embedding_source)
+
+        points.append(
+            PointStruct(
+                id=int(fid),
+                vector=emb,
+                payload={
+                    "file_id": fid,
+                    "filename": filename,
+                    "is_doc_level": True,
+                    "chunk_index": -1,
+                    "text": summary or "",
+                },
+            )
+        )
+
+        # Chunk-level embeddings
+        for idx, chunk_text in enumerate(chunks):
+            chunk_emb = generate_embedding(chunk_text)
+            chunk_point_id = fid * 10_000 + idx
+
+            points.append(
+                PointStruct(
+                    id=chunk_point_id,
+                    vector=chunk_emb,
+                    payload={
+                        "file_id": fid,
+                        "filename": filename,
+                        "is_doc_level": False,
+                        "chunk_index": idx,
+                        "text": chunk_text,
+                    },
+                )
+            )
+
+    # 3) Upsert in batches to avoid huge requests
+    batch_size = 64
+    for i in range(0, len(points), batch_size):
+        batch = points[i : i + batch_size]
+        client.upsert(collection_name="files", points=batch)
+
+    print(f"[reindex_all_files] Finished. Upserted {len(points)} points.")
+    return {"reindexed": len(rows)}
