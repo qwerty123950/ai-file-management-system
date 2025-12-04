@@ -21,6 +21,7 @@ from ai.embeddings import generate_embedding
 from ai.summarizer import summarize_text, summarize_with_sentence_limit
 from ai.deduplication import is_duplicate  # even if unused for now
 from ai.preprocess import clean_text
+from ai.tagger import generate_tags
 
 # Make the DB path absolute and consistent
 DATABASE_PATH = os.path.abspath(
@@ -32,13 +33,16 @@ client = QdrantClient(url=QDRANT_URL)
 
 def ensure_db():
     """
-    Make sure the database file and `files` table exist.
+    Make sure the database file and `files` table exist,
+    and that it has a `tags` column.
     Safe to call many times.
     """
     os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
 
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
+
+    # Create base table (if not exists)
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS files (
@@ -47,10 +51,18 @@ def ensure_db():
             filepath TEXT NOT NULL,
             content TEXT,
             summary TEXT,
-            summary_type TEXT
+            summary_type TEXT,
+            tags TEXT
         );
         """
     )
+
+    # Ensure 'tags' column exists even on older DBs
+    cursor.execute("PRAGMA table_info(files)")
+    cols = [row[1] for row in cursor.fetchall()]
+    if "tags" not in cols:
+        cursor.execute("ALTER TABLE files ADD COLUMN tags TEXT")
+
     conn.commit()
     conn.close()
 
@@ -58,26 +70,7 @@ def ensure_db():
 def init_db():
     """Create the database directory and files table if they don't exist."""
     os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
-
     ensure_db()
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS files (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            filename TEXT NOT NULL,
-            filepath TEXT NOT NULL,
-            content TEXT,
-            summary TEXT,
-            summary_type TEXT
-        );
-        """
-    )
-
-    conn.commit()
-    conn.close()
     print("DB initialized at:", DATABASE_PATH)
 
 
@@ -167,6 +160,7 @@ def process_file(file_path, filename):
         summary_type = "placeholder"
         embedding_source = "empty document"
         chunks = []
+        tags_str = ""
     else:
         # Prefer cleaned text if available, otherwise raw
         content = cleaned if cleaned and cleaned.strip() else raw_content
@@ -192,6 +186,11 @@ def process_file(file_path, filename):
         embedding_source = content
         chunks = _split_into_chunks(content)
 
+        # Simple tag generation from summary (fallback to content)
+        tag_source = summary if summary else content
+        tags_list = generate_tags(tag_source)
+        tags_str = ", ".join(tags_list)
+
     # 4) Generate embedding for the whole document
     embedding = generate_embedding(embedding_source)
     print(f"[process_file] doc-level embedding length: {len(embedding)}")
@@ -201,10 +200,11 @@ def process_file(file_path, filename):
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO files (filename, filepath, content, summary, summary_type) "
-        "VALUES (?, ?, ?, ?, ?)",
-        (filename, file_path, content, summary, summary_type),
+        "INSERT INTO files (filename, filepath, content, summary, summary_type, tags) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (filename, file_path, content, summary, summary_type, tags_str),
     )
+
     file_id = cursor.lastrowid
     conn.commit()
     conn.close()
@@ -357,7 +357,7 @@ def get_all_files():
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, filename, filepath, summary, summary_type "
+        "SELECT id, filename, filepath, summary, summary_type, tags "
         "FROM files ORDER BY id DESC"
     )
     rows = cursor.fetchall()
@@ -370,9 +370,11 @@ def get_all_files():
             "filepath": row[2],
             "summary": row[3],
             "summary_type": row[4],
+            "tags": row[5],
         }
         for row in rows
     ]
+
 
 
 def summarize_file_by_mode(file_id: int, mode: str) -> str:
@@ -635,3 +637,39 @@ def reindex_all_files():
 
     print(f"[reindex_all_files] Finished. Upserted {len(points)} points.")
     return {"reindexed": len(rows)}
+
+def get_files_by_tag(tag: str):
+    """
+    Return files whose tags contain the given tag (case-insensitive substring match).
+    """
+    ensure_db()
+    if not tag:
+        return []
+
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    like = f"%{tag.lower()}%"
+    cursor.execute(
+        """
+        SELECT id, filename, filepath, summary, summary_type, tags
+        FROM files
+        WHERE lower(tags) LIKE ?
+        ORDER BY id DESC
+        """,
+        (like,),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [
+        {
+            "id": row[0],
+            "filename": row[1],
+            "filepath": row[2],
+            "summary": row[3],
+            "summary_type": row[4],
+            "tags": row[5],
+        }
+        for row in rows
+    ]

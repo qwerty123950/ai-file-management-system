@@ -13,6 +13,7 @@ from backend.services.file_service import (
     check_duplicates,
     delete_file,
     reindex_all_files,
+    get_files_by_tag,
 )
 
 router = APIRouter()
@@ -97,3 +98,11 @@ def reindex_route():
     """
     result = reindex_all_files()
     return result
+
+@router.get("/files/by-tag")
+def files_by_tag(tag: str):
+    """
+    Get files whose tags contain the given string (case-insensitive).
+    """
+    files = get_files_by_tag(tag)
+    return {"files": files}

@@ -59,6 +59,35 @@ if st.button("Reindex all files"):
     else:
         st.error("Reindex failed")
 
+    # Tag filter
+tag_filter = st.text_input("Filter files by tag (e.g. 'tuberculosis', 'report')", key="tag_filter")
+
+if st.button("Search by tag"):
+    if tag_filter.strip():
+        resp = requests.get(f"{BACKEND_URL}/api/files/by-tag", params={"tag": tag_filter.strip()})
+        if resp.status_code == 200:
+            data = resp.json()
+            files = data.get("files", [])
+            if not files:
+                st.info("No files matched that tag.")
+            else:
+                st.success(f"Found {len(files)} file(s) with tag matching '{tag_filter}'.")
+                for f in files:
+                    st.subheader(f["filename"])
+                    st.write(f"**ID:** {f['id']}")
+                    st.write(f"**Path:** {f['filepath']}")
+                    if f.get("tags"):
+                        st.write(f"**Tags:** {f['tags']}")
+                    st.caption(f"Stored summary type: {f.get('summary_type', 'unknown')}")
+                    with st.expander("Stored Summary (default medium)"):
+                        st.write(f["summary"])
+                    st.write("---")
+        else:
+            st.error("Tag search failed")
+    else:
+        st.warning("Enter a tag to search by.")
+
+
 if st.button("Refresh File List"):
     response = requests.get(f"{BACKEND_URL}/api/files")
     if response.status_code == 200:
@@ -72,6 +101,9 @@ if st.button("Refresh File List"):
                 st.write(f"**ID:** {f['id']}")
                 st.write(f"**Path:** {f['filepath']}")
                 st.caption(f"Stored summary type: {f.get('summary_type', 'unknown')}")
+                if f.get("tags"):
+                    st.write(f"**Tags:** {f['tags']}")
+
 
                 # Stored default (medium) summary
                 with st.expander("Stored Summary (default medium)"):
@@ -142,7 +174,7 @@ if st.button("Refresh File List"):
                                     )
                         else:
                             st.error("Failed to fetch duplicates")
-                            
+
                     # Delete file
                     if st.button("Delete file", key=f"del_{f['id']}"):
                         resp = requests.delete(f"{BACKEND_URL}/api/files/{f['id']}")
