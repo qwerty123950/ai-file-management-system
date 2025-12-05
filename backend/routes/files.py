@@ -14,6 +14,8 @@ from backend.services.file_service import (
     delete_file,
     reindex_all_files,
     get_files_by_tag,
+    search_file_by_word,
+    search_file_by_word_count,
 )
 
 router = APIRouter()
@@ -42,12 +44,25 @@ def search(query: str, top_k: int = 5):
     results = search_files(query, top_k)
     return {"results": results}
 
+@router.get("/search/word")
+def search_by_word(word: str):
+    """
+    Find the single file where `word` appears the most times in the content.
+    Returns that file's full content.
+    """
+    result = search_file_by_word(word)
+    if not result:
+        return {
+            "result": None,
+            "message": "No files contain that word (as a separate word).",
+        }
+    return {"result": result}
+
 
 @router.get("/files")
 def list_files():
     files = get_all_files()
     return {"files": files}
-
 
 @router.get("/files/{file_id}/summary")
 def get_file_summary(file_id: int, mode: str = "medium"):
@@ -106,3 +121,26 @@ def files_by_tag(tag: str):
     """
     files = get_files_by_tag(tag)
     return {"files": files}
+
+@router.get("/search-word")
+def search_word_full_file(query: str):
+    """
+    Return the single file whose content contains `query`
+    the largest number of times, plus its full content.
+    Works for text PDFs, DOCX, scanned PDFs (if OCR), and images,
+    because it uses the stored `content` field.
+    """
+    result = search_file_by_word_count(query)
+    if not result:
+        return {"found": False, "message": "No file contains that word."}
+
+    return {
+        "found": True,
+        "file": {
+            "id": result["id"],
+            "filename": result["filename"],
+            "filepath": result["filepath"],
+            "count": result["count"],
+            "content": result["content"],
+        },
+    }

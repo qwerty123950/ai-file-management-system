@@ -68,26 +68,98 @@ if st.session_state.get("last_uploaded_id"):
 # ------------------------
 st.header("Search Files")
 
-query = st.text_input("Search query")
-if st.button("Search"):
-    response = requests.get(f"{BACKEND_URL}/api/search", params={"query": query})
-    if response.status_code == 200:
-        results = response.json()["results"]
-        if not results:
-            st.info("No matching files found.")
-        for res in results:
-            st.subheader(f"{res['filename']}  (Score: {res['score']:.2f})")
-            st.caption(f"Stored summary type: {res.get('summary_type', 'unknown')}")
+query = st.text_input("Search query (word or phrase)")
 
-            st.markdown("**Best matching snippet:**")
-            st.write(res.get("snippet", ""))
+cols = st.columns(2)
 
-            with st.expander("Stored Summary (default medium)"):
-                st.write(res["summary"])
+# --- Button 1: existing semantic search (Qdrant) ---
+with cols[0]:
+    if st.button("Semantic search", key="semantic_search"):
+        response = requests.get(f"{BACKEND_URL}/api/search", params={"query": query})
+        if response.status_code == 200:
+            results = response.json().get("results", [])
+            if not results:
+                st.info("No matching files found (semantic search).")
+            for res in results:
+                st.subheader(f"{res['filename']}  (Score: {res['score']:.2f})")
+                st.caption(f"Stored summary type: {res.get('summary_type', 'unknown')}")
 
-            st.write("---")
+                st.markdown("**Best matching snippet:**")
+                st.write(res.get("snippet", ""))
+
+                with st.expander("Stored Summary (default medium)"):
+                    st.write(res["summary"])
+
+                st.write("---")
+        else:
+            st.error("Semantic search failed")
+
+# --- Button 2: new word-count-based search ---
+with cols[1]:
+    if st.button("Search by word count", key="word_count_search"):
+        if not query.strip():
+            st.warning("Enter a word to search for.")
+        else:
+            response = requests.get(
+                f"{BACKEND_URL}/api/search/word",
+                params={"word": query.strip()},
+            )
+            if response.status_code == 200:
+                data = response.json()
+                result = data.get("result")
+                if not result:
+                    st.info("No file contains that word as a separate word.")
+                else:
+                    st.subheader(
+                        f"File with highest count for '{query.strip()}': "
+                        f"{result['filename']} (ID: {result['id']})"
+                    )
+                    st.caption(
+                        f"Occurrences: {result['count']} | "
+                        f"Summary type: {result.get('summary_type', 'unknown')}"
+                    )
+                    if result.get("tags"):
+                        st.write(f"**Tags:** {result['tags']}")
+
+                    st.markdown("**Full file content:**")
+                    st.text_area(
+                        "Content",
+                        result.get("content", ""),
+                        height=300,
+                    )
+            else:
+                st.error("Word-count search failed")
+
+st.header("Search by Word (show full file with highest count)")
+
+word_query = st.text_input("Word to search in all files", key="word_query")
+
+if st.button("Search word in all files"):
+    if not word_query.strip():
+        st.warning("Please enter a word to search.")
     else:
-        st.error("Search failed")
+        resp = requests.get(f"{BACKEND_URL}/api/search-word", params={"query": word_query})
+        if resp.status_code == 200:
+            data = resp.json()
+            if not data.get("found"):
+                st.info(data.get("message", "No file contains that word."))
+            else:
+                f = data["file"]
+                st.subheader(f"Best file: {f['filename']}")
+                st.caption(
+                    f"ID: {f['id']} | Path: {f['filepath']} | "
+                    f"Occurrences of '{word_query}': {f['count']}"
+                )
+
+                # Show full content (this is the entire OCR/text content)
+                st.markdown("**Full file content (text):**")
+                st.text_area(
+                    label="",
+                    value=f["content"],
+                    height=400,
+                )
+        else:
+            st.error("Search failed")
 
 # ------------------------
 # All uploaded files + dynamic summaries + relations

@@ -2,7 +2,8 @@
 
 import os
 import sqlite3
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+import re
 
 from fastapi import HTTPException
 from qdrant_client import QdrantClient
@@ -31,7 +32,11 @@ QDRANT_URL = "http://localhost:6333"  # Assuming local Qdrant
 
 client = QdrantClient(url=QDRANT_URL)
 
-def ensure_db():
+
+# -------------------------------------------------------------------
+# DB & Qdrant init
+# -------------------------------------------------------------------
+def ensure_db() -> None:
     """
     Make sure the database file and `files` table exist,
     and that it has a `tags` column.
@@ -67,13 +72,14 @@ def ensure_db():
     conn.close()
 
 
-def init_db():
+def init_db() -> None:
     """Create the database directory and files table if they don't exist."""
     os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
     ensure_db()
     print("DB initialized at:", DATABASE_PATH)
 
-def init_qdrant():
+
+def init_qdrant() -> None:
     """
     Ensure Qdrant collection 'files' exists with correct vector size and cosine distance.
     """
@@ -81,7 +87,7 @@ def init_qdrant():
     dim = len(generate_embedding("dimension test"))
     try:
         client.get_collection("files")
-        print(f"Qdrant collection 'files' already exists.")
+        print("Qdrant collection 'files' already exists.")
     except Exception:
         print(f"Creating Qdrant collection 'files' with dim={dim}")
         client.create_collection(
@@ -98,7 +104,12 @@ init_db()
 init_qdrant()
 
 
-def _split_into_chunks(text: str, max_chars: int = 1000, min_chars: int = 200) -> List[str]:
+# -------------------------------------------------------------------
+# Helpers
+# -------------------------------------------------------------------
+def _split_into_chunks(
+    text: str, max_chars: int = 1000, min_chars: int = 200
+) -> List[str]:
     """
     Split text into reasonably sized chunks for embedding/search.
     - We try to split on paragraph boundaries first.
@@ -132,10 +143,54 @@ def _split_into_chunks(text: str, max_chars: int = 1000, min_chars: int = 200) -
     return chunks
 
 
-def process_file(file_path, filename):
+def _get_file_metadata_map(file_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+    """
+    Fetch filename, summary, summary_type for a list of file_ids from DB.
+    Returns a dict: file_id -> metadata dict
+    """
+    if not file_ids:
+        return {}
+
+    ensure_db()
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    placeholders = ",".join("?" for _ in file_ids)
+    cursor.execute(
+        f"SELECT id, filename, summary, summary_type FROM files WHERE id IN ({placeholders})",
+        file_ids,
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    meta: Dict[int, Dict[str, Any]] = {}
+    for row in rows:
+        meta[row[0]] = {
+            "id": row[0],
+            "filename": row[1],
+            "summary": row[2],
+            "summary_type": row[3],
+        }
+    return meta
+
+
+def _count_word_occurrences(text: str, word: str) -> int:
+    """
+    Count occurrences of `word` in `text` using case-insensitive
+    word-boundary regex, so 'car' does not match 'scary'.
+    """
+    if not text or not word:
+        return 0
+    pattern = re.compile(rf"\b{re.escape(word.lower())}\b")
+    return len(pattern.findall(text.lower()))
+
+
+# -------------------------------------------------------------------
+# Core: process_file
+# -------------------------------------------------------------------
+def process_file(file_path: str, filename: str) -> Optional[int]:
     print(f"[process_file] Starting for {filename} at {file_path}")
 
-    # 1) Extract text
+    # 1) Extract text (works for PDFs, DOCX, images, scanned PDFs via OCR)
     raw_content = extract_text(file_path)
     print(f"[process_file] raw_content length: {len(raw_content) if raw_content else 0}")
 
@@ -158,7 +213,7 @@ def process_file(file_path, filename):
         summary = "No extractable text found in this document."
         summary_type = "placeholder"
         embedding_source = "empty document"
-        chunks = []
+        chunks: List[str] = []
         tags_str = ""
     else:
         # Prefer cleaned text if available, otherwise raw
@@ -166,9 +221,7 @@ def process_file(file_path, filename):
 
         # 3) Summarize (stored default = medium)
         try:
-            summary = summarize_text(content, mode="medium")
-            if summary is None:
-                summary = ""
+            summary = summarize_text(content, mode="medium") or ""
             summary = summary.strip()
             print(f"[process_file] summary length after strip: {len(summary)}")
         except Exception as e:
@@ -252,44 +305,19 @@ def process_file(file_path, filename):
 
     if points:
         client.upsert(collection_name="files", points=points)
-        print(f"[process_file] Upserted {len(points)} vectors to Qdrant for file_id={file_id}")
+        print(
+            f"[process_file] Upserted {len(points)} vectors to Qdrant for file_id={file_id}"
+        )
     else:
         print("[process_file] No chunks to index in Qdrant")
 
     return file_id
 
 
-def _get_file_metadata_map(file_ids: List[int]) -> Dict[int, Dict[str, Any]]:
-    """
-    Fetch filename, summary, summary_type for a list of file_ids from DB.
-    Returns a dict: file_id -> metadata dict
-    """
-    if not file_ids:
-        return {}
-
-    ensure_db()
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    placeholders = ",".join("?" for _ in file_ids)
-    cursor.execute(
-        f"SELECT id, filename, summary, summary_type FROM files WHERE id IN ({placeholders})",
-        file_ids,
-    )
-    rows = cursor.fetchall()
-    conn.close()
-
-    meta = {}
-    for row in rows:
-        meta[row[0]] = {
-            "id": row[0],
-            "filename": row[1],
-            "summary": row[2],
-            "summary_type": row[3],
-        }
-    return meta
-
-
-def search_files(query, top_k=5):
+# -------------------------------------------------------------------
+# Search: semantic (Qdrant)
+# -------------------------------------------------------------------
+def search_files(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
     """
     Semantic search over chunk embeddings in Qdrant.
     Returns top files, each with:
@@ -350,7 +378,10 @@ def search_files(query, top_k=5):
     return merged[:top_k]
 
 
-def get_all_files():
+# -------------------------------------------------------------------
+# Search: list & word-based
+# -------------------------------------------------------------------
+def get_all_files() -> List[Dict[str, Any]]:
     """Return all files stored in the DB."""
     ensure_db()
     conn = sqlite3.connect(DATABASE_PATH)
@@ -375,7 +406,85 @@ def get_all_files():
     ]
 
 
+def _search_best_file_for_word(word: str) -> Optional[Dict[str, Any]]:
+    """
+    Core logic: scan all files and find the one with the highest
+    word-boundary count of `word` in content.
+    """
+    word = (word or "").strip()
+    if not word:
+        return None
 
+    ensure_db()
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, filename, filepath, content, summary, summary_type, tags FROM files"
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    best_row = None
+    best_count = 0
+
+    for row in rows:
+        fid, filename, filepath, content, summary, summary_type, tags = row
+        if not content:
+            continue
+
+        count = _count_word_occurrences(content, word)
+        if count > best_count:
+            best_count = count
+            best_row = row
+
+    if not best_row or best_count == 0:
+        return None
+
+    fid, filename, filepath, content, summary, summary_type, tags = best_row
+
+    return {
+        "id": fid,
+        "filename": filename,
+        "filepath": filepath,
+        "content": content,
+        "summary": summary,
+        "summary_type": summary_type,
+        "tags": tags,
+        "count": best_count,
+    }
+
+
+def search_file_by_word(word: str) -> Optional[Dict[str, Any]]:
+    """
+    Public function used by /api/search/word.
+    Returns full metadata + count for the file where `word`
+    appears the most times (word-boundary, case-insensitive).
+    """
+    return _search_best_file_for_word(word)
+
+
+def search_file_by_word_count(query: str) -> Optional[Dict[str, Any]]:
+    """
+    Public function used by /api/search-word.
+    Keeps backward-compatible return shape (id, filename, filepath, content, count)
+    but reuses the same word-boundary logic as search_file_by_word.
+    """
+    result = _search_best_file_for_word(query)
+    if not result:
+        return None
+
+    return {
+        "id": result["id"],
+        "filename": result["filename"],
+        "filepath": result["filepath"],
+        "content": result["content"],
+        "count": result["count"],
+    }
+
+
+# -------------------------------------------------------------------
+# Dynamic summaries
+# -------------------------------------------------------------------
 def summarize_file_by_mode(file_id: int, mode: str) -> str:
     """
     Load stored content for a file and generate a fresh summary
@@ -413,6 +522,9 @@ def summarize_file_by_mode(file_id: int, mode: str) -> str:
     return summary
 
 
+# -------------------------------------------------------------------
+# Similarity, duplicates, delete, reindex, tags
+# -------------------------------------------------------------------
 def find_similar_files(file_id: int, top_k: int = 5) -> List[Dict[str, Any]]:
     """
     Use embeddings + Qdrant to find the most similar other documents to this file.
@@ -505,7 +617,8 @@ def check_duplicates(file_id: int, threshold: float = 0.9) -> List[Dict[str, Any
     duplicates = [s for s in similar if s["score"] >= threshold]
     return duplicates
 
-def delete_file(file_id: int):
+
+def delete_file(file_id: int) -> Dict[str, Any]:
     """
     Delete a file from SQLite and remove all its vectors from Qdrant.
     """
@@ -545,11 +658,14 @@ def delete_file(file_id: int):
         )
         print(f"[delete_file] Deleted Qdrant vectors for file_id={file_id}")
     except Exception as e:
-        print(f"[delete_file] Warning: failed to delete vectors for file_id={file_id}: {e}")
+        print(
+            f"[delete_file] Warning: failed to delete vectors for file_id={file_id}: {e}"
+        )
 
     return {"id": file_id, "filename": filename}
 
-def reindex_all_files():
+
+def reindex_all_files() -> Dict[str, Any]:
     """
     Rebuild Qdrant index from all rows in the SQLite `files` table.
     Useful if Qdrant was cleared, changed, or earlier upserts failed.
@@ -575,7 +691,10 @@ def reindex_all_files():
         client.delete_collection("files")
         print("[reindex_all_files] Existing Qdrant collection 'files' deleted")
     except Exception as e:
-        print("[reindex_all_files] delete_collection failed (maybe doesn't exist):", repr(e))
+        print(
+            "[reindex_all_files] delete_collection failed (maybe doesn't exist):",
+            repr(e),
+        )
 
     # 2) Recreate collection with correct vector size
     init_qdrant()
@@ -637,7 +756,8 @@ def reindex_all_files():
     print(f"[reindex_all_files] Finished. Upserted {len(points)} points.")
     return {"reindexed": len(rows)}
 
-def get_files_by_tag(tag: str):
+
+def get_files_by_tag(tag: str) -> List[Dict[str, Any]]:
     """
     Return files whose tags contain the given tag (case-insensitive substring match).
     """
