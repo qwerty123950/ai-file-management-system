@@ -166,6 +166,11 @@ if st.button("Search word in all files"):
 # ------------------------
 st.header("All Uploaded Files & Summaries")
 
+# Keep cached file list in session_state
+if "files_cache" not in st.session_state:
+    st.session_state["files_cache"] = []
+
+# Reindex button (unchanged)
 if st.button("Reindex all files"):
     resp = requests.post(f"{BACKEND_URL}/api/reindex")
     if resp.status_code == 200:
@@ -174,12 +179,18 @@ if st.button("Reindex all files"):
     else:
         st.error("Reindex failed")
 
-    # Tag filter
-tag_filter = st.text_input("Filter files by tag (e.g. 'tuberculosis', 'report')", key="tag_filter")
+# Tag filter (unchanged)
+tag_filter = st.text_input(
+    "Filter files by tag (e.g. 'tuberculosis', 'report')",
+    key="tag_filter",
+)
 
 if st.button("Search by tag"):
     if tag_filter.strip():
-        resp = requests.get(f"{BACKEND_URL}/api/files/by-tag", params={"tag": tag_filter.strip()})
+        resp = requests.get(
+            f"{BACKEND_URL}/api/files/by-tag",
+            params={"tag": tag_filter.strip()},
+        )
         if resp.status_code == 200:
             data = resp.json()
             files = data.get("files", [])
@@ -202,101 +213,106 @@ if st.button("Search by tag"):
     else:
         st.warning("Enter a tag to search by.")
 
-
+# 🔁 REFRESH just updates the cache
 if st.button("Refresh File List"):
     response = requests.get(f"{BACKEND_URL}/api/files")
     if response.status_code == 200:
         data = response.json()
-        files = data.get("files", [])
-        if not files:
-            st.info("No files uploaded yet.")
-        else:
-            for f in files:
-                st.subheader(f["filename"])
-                st.write(f"**ID:** {f['id']}")
-                st.write(f"**Path:** {f['filepath']}")
-                st.caption(f"Stored summary type: {f.get('summary_type', 'unknown')}")
-                if f.get("tags"):
-                    st.write(f"**Tags:** {f['tags']}")
-
-
-                # Stored default (medium) summary
-                with st.expander("Stored Summary (default medium)"):
-                    st.write(f["summary"])
-
-                # Dynamic summary modes
-                st.markdown("**Generate Custom Summary:**")
-                mode = st.radio(
-                    "Summary length",
-                    ["short", "medium", "long"],
-                    horizontal=True,
-                    key=f"mode_{f['id']}",
-                )
-
-                if st.button("Show summary", key=f"show_{f['id']}"):
-                    resp = requests.get(
-                        f"{BACKEND_URL}/api/files/{f['id']}/summary",
-                        params={"mode": mode},
-                    )
-                    if resp.status_code == 200:
-                        dyn = resp.json()
-                        st.write(f"**{mode.capitalize()} summary:**")
-                        st.write(dyn["summary"])
-                    else:
-                        st.error("Failed to generate summary")
-
-                # Similar documents
-                st.markdown("**Related Documents:**")
-                cols = st.columns(2)
-
-                with cols[0]:
-                    if st.button("Show similar files", key=f"sim_{f['id']}"):
-                        resp = requests.get(
-                            f"{BACKEND_URL}/api/files/{f['id']}/similar",
-                            params={"top_k": 5},
-                        )
-                        if resp.status_code == 200:
-                            data_sim = resp.json()
-                            sims = data_sim.get("similar", [])
-                            if not sims:
-                                st.info("No similar files found.")
-                            else:
-                                for s in sims:
-                                    st.write(
-                                        f"- {s['filename']} "
-                                        f"(Score: {s['score']:.3f}, ID: {s['id']})"
-                                    )
-                        else:
-                            st.error("Failed to fetch similar files")
-
-                with cols[1]:
-                    if st.button("Show duplicates", key=f"dup_{f['id']}"):
-                        resp = requests.get(
-                            f"{BACKEND_URL}/api/files/{f['id']}/duplicates",
-                            params={"threshold": 0.9},
-                        )
-                        if resp.status_code == 200:
-                            data_dup = resp.json()
-                            dups = data_dup.get("duplicates", [])
-                            if not dups:
-                                st.info("No duplicates (above threshold) found.")
-                            else:
-                                st.write("Potential duplicates:")
-                                for d in dups:
-                                    st.write(
-                                        f"- {d['filename']} "
-                                        f"(Score: {d['score']:.3f}, ID: {d['id']})"
-                                    )
-                        else:
-                            st.error("Failed to fetch duplicates")
-
-                    # Delete file
-                    if st.button("Delete file", key=f"del_{f['id']}"):
-                        resp = requests.delete(f"{BACKEND_URL}/api/files/{f['id']}")
-                        if resp.status_code == 200:
-                            st.success("File deleted. Click 'Refresh File List' to update.")
-                        else:
-                            st.error("Failed to delete file")
-                st.write("---")
+        st.session_state["files_cache"] = data.get("files", [])
+        st.success("File list refreshed.")
     else:
         st.error("Could not fetch uploaded files")
+
+# ✅ Always use cached files to render buttons
+files = st.session_state["files_cache"]
+
+if not files:
+    st.info("No files uploaded yet. Click 'Refresh File List' to load files.")
+else:
+    for f in files:
+        st.subheader(f["filename"])
+        st.write(f"**ID:** {f['id']}")
+        st.write(f"**Path:** {f['filepath']}")
+        st.caption(f"Stored summary type: {f.get('summary_type', 'unknown')}")
+        if f.get("tags"):
+            st.write(f"**Tags:** {f['tags']}")
+
+        # Stored default (medium) summary
+        with st.expander("Stored Summary (default medium)"):
+            st.write(f["summary"])
+
+        # Dynamic summary modes
+        st.markdown("**Generate Custom Summary:**")
+        mode = st.radio(
+            "Summary length",
+            ["short", "medium", "long"],
+            horizontal=True,
+            key=f"mode_{f['id']}",
+        )
+
+        if st.button("Show summary", key=f"show_{f['id']}"):
+            resp = requests.get(
+                f"{BACKEND_URL}/api/files/{f['id']}/summary",
+                params={"mode": mode},
+            )
+            if resp.status_code == 200:
+                dyn = resp.json()
+                st.write(f"**{mode.capitalize()} summary:**")
+                st.write(dyn["summary"])
+            else:
+                st.error("Failed to generate summary")
+
+        # Similar documents
+        st.markdown("**Related Documents:**")
+        cols = st.columns(2)
+
+        with cols[0]:
+            if st.button("Show similar files", key=f"sim_{f['id']}"):
+                resp = requests.get(
+                    f"{BACKEND_URL}/api/files/{f['id']}/similar",
+                    params={"top_k": 5},
+                )
+                if resp.status_code == 200:
+                    data_sim = resp.json()
+                    sims = data_sim.get("similar", [])
+                    if not sims:
+                        st.info("No similar files found.")
+                    else:
+                        for s in sims:
+                            st.write(
+                                f"- {s['filename']} "
+                                f"(Score: {s['score']:.3f}, ID: {s['id']})"
+                            )
+                else:
+                    st.error("Failed to fetch similar files")
+
+        with cols[1]:
+            if st.button("Show duplicates", key=f"dup_{f['id']}"):
+                resp = requests.get(
+                    f"{BACKEND_URL}/api/files/{f['id']}/duplicates",
+                    params={"threshold": 0.9},
+                )
+                if resp.status_code == 200:
+                    data_dup = resp.json()
+                    dups = data_dup.get("duplicates", [])
+                    if not dups:
+                        st.info("No duplicates (above threshold) found.")
+                    else:
+                        st.write("Potential duplicates:")
+                        for d in dups:
+                            st.write(
+                                f"- {d['filename']} "
+                                f"(Score: {d['score']:.3f}, ID: {d['id']})"
+                            )
+                else:
+                    st.error("Failed to fetch duplicates")
+
+            # Delete file
+            if st.button("Delete file", key=f"del_{f['id']}"):
+                resp = requests.delete(f"{BACKEND_URL}/api/files/{f['id']}")
+                if resp.status_code == 200:
+                    st.success("File deleted. Click 'Refresh File List' to update.")
+                else:
+                    st.error("Failed to delete file")
+
+        st.write("---")
