@@ -73,7 +73,6 @@ def init_db():
     ensure_db()
     print("DB initialized at:", DATABASE_PATH)
 
-
 def init_qdrant():
     """
     Ensure Qdrant collection 'files' exists with correct vector size and cosine distance.

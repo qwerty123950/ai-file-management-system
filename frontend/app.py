@@ -3,6 +3,11 @@ import requests
 
 BACKEND_URL = "http://localhost:8000"
 
+if "last_uploaded_id" not in st.session_state:
+    st.session_state["last_uploaded_id"] = None
+if "last_uploaded_filename" not in st.session_state:
+    st.session_state["last_uploaded_filename"] = None
+
 st.title("AI File Management System")
 
 # ------------------------
@@ -15,10 +20,48 @@ if uploaded_file is not None:
     if st.button("Upload"):
         files = {"file": uploaded_file}
         response = requests.post(f"{BACKEND_URL}/api/upload", files=files)
+
         if response.status_code == 200:
+            data = response.json()
+            file_id = data.get("file_id")
+
+            if file_id is not None:
+                # store in session so we can show summary right away
+                st.session_state["last_uploaded_id"] = file_id
+                st.session_state["last_uploaded_filename"] = uploaded_file.name
+
             st.success("File uploaded successfully!")
         else:
             st.error("Failed to upload file")
+
+# If we have a last uploaded file, show a button to get its summary
+if st.session_state.get("last_uploaded_id"):
+    st.markdown("---")
+    st.subheader("Summary of last uploaded file")
+
+    st.write(
+        f"**File:** {st.session_state['last_uploaded_filename']} "
+        f"(ID: {st.session_state['last_uploaded_id']})"
+    )
+
+    mode = st.radio(
+        "Summary length",
+        ["short", "medium", "long"],
+        horizontal=True,
+        key="last_upload_summary_mode",
+    )
+
+    if st.button("Show summary for last uploaded file"):
+        resp = requests.get(
+            f"{BACKEND_URL}/api/files/{st.session_state['last_uploaded_id']}/summary",
+            params={"mode": mode},
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            st.markdown(f"**{mode.capitalize()} summary:**")
+            st.write(data["summary"])
+        else:
+            st.error("Failed to fetch summary for last uploaded file")
 
 # ------------------------
 # Search section
