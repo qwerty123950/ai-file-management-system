@@ -51,42 +51,39 @@ st.markdown(
 
 st.write("")
 
-# ======================================================
-# UPLOAD PAGE
-# ======================================================
-if page == "Upload":
-    st.subheader("📤 Upload File")
+# ------------------------
+# Upload files / folders
+# ------------------------
+st.header("Upload Files or Folder (ZIP)")
 
-    uploaded_file = st.file_uploader("Choose a file")
-    if uploaded_file and st.button("Upload"):
-        files = {"file": uploaded_file}
+uploaded_files = st.file_uploader(
+    "Upload files OR a ZIP folder",
+    accept_multiple_files=True,
+    type=["pdf", "docx", "png", "jpg", "jpeg", "zip"]
+)
+
+if uploaded_files and st.button("Upload"):
+    success_count = 0
+
+    for uf in uploaded_files:
+        files = {"file": (uf.name, uf.getvalue())}
         resp = requests.post(f"{BACKEND_URL}/api/upload", files=files)
 
         if resp.status_code == 200:
+            st.success(f"Uploaded: {uf.name}")
+            success_count += 1
+
             data = resp.json()
-            st.session_state["last_uploaded_id"] = data.get("file_id")
-            st.session_state["last_uploaded_filename"] = uploaded_file.name
-            st.success("File uploaded successfully")
+
+            # Only set session values if backend returned file_id
+            if "file_id" in data and data["file_id"] is not None:
+                st.session_state["last_uploaded_id"] = data["file_id"]
+                st.session_state["last_uploaded_filename"] = uf.name
         else:
-            st.error("Upload failed")
+            st.error(f"Failed to upload: {uf.name}")
 
-    # Show summary button after upload
-    if st.session_state["last_uploaded_id"]:
-        st.markdown("### 📝 Last Uploaded File Summary")
+    st.success(f"Uploaded {success_count} file(s) successfully!")
 
-        mode = st.radio(
-            "Summary length",
-            ["short", "medium", "long"],
-            horizontal=True,
-        )
-
-        if st.button("Show Summary"):
-            resp = requests.get(
-                f"{BACKEND_URL}/api/files/{st.session_state['last_uploaded_id']}/summary",
-                params={"mode": mode},
-            )
-            if resp.status_code == 200:
-                st.write(resp.json()["summary"])
 
 # ======================================================
 # SEARCH PAGE

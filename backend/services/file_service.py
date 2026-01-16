@@ -30,8 +30,9 @@ DATABASE_PATH = os.path.abspath(
 )
 QDRANT_URL = "http://localhost:6333"  # Assuming local Qdrant
 
-client = QdrantClient(url=QDRANT_URL)
+client = QdrantClient(url=QDRANT_URL, prefer_grpc=False)
 
+# pyright: reportAttributeAccessIssue=false
 
 # -------------------------------------------------------------------
 # DB & Qdrant init
@@ -258,6 +259,10 @@ def process_file(file_path: str, filename: str) -> Optional[int]:
     )
 
     file_id = cursor.lastrowid
+
+    if file_id is None:
+        raise RuntimeError("Failed to get file_id from database")
+
     conn.commit()
     conn.close()
 
@@ -333,6 +338,8 @@ def search_files(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         limit=top_k * 5,
         with_payload=True,
     )
+
+    # Pylance false-positive: QdrantClient.search exists at runtime
 
     # Aggregate by file_id
     agg: Dict[int, Dict[str, Any]] = {}
@@ -646,16 +653,16 @@ def delete_file(file_id: int) -> Dict[str, Any]:
     try:
         client.delete(
             collection_name="files",
-            points_selector=None,
-            filter=Filter(
+            points_selector=Filter(
                 must=[
                     FieldCondition(
                         key="file_id",
-                        match=MatchValue(value=file_id),
+                        match=MatchValue(value=file_id)
                     )
                 ]
-            ),
+            )
         )
+
         print(f"[delete_file] Deleted Qdrant vectors for file_id={file_id}")
     except Exception as e:
         print(
