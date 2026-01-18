@@ -1,5 +1,7 @@
 import streamlit as st
 import requests
+import re
+
 
 BACKEND_URL = "http://localhost:8000"
 
@@ -9,6 +11,14 @@ BACKEND_URL = "http://localhost:8000"
 st.session_state.setdefault("files_cache", [])
 st.session_state.setdefault("last_uploaded_id", None)
 st.session_state.setdefault("last_uploaded_filename", None)
+
+def highlight(text, word):
+    return re.sub(
+        rf"({re.escape(word)})",
+        r"**\1**",
+        text,
+        flags=re.IGNORECASE
+    )
 
 # -------------------------------
 # Page Config
@@ -33,7 +43,8 @@ with st.sidebar:
     if st.button("🔄 Refresh Files"):
         resp = requests.get(f"{BACKEND_URL}/api/files")
         if resp.status_code == 200:
-            st.session_state["files_cache"] = resp.json().get("files", [])
+            data = resp.json()
+            st.session_state["files_cache"] = data if isinstance(data, list) else []
             st.success("File list refreshed")
 
 # -------------------------------
@@ -51,39 +62,38 @@ st.markdown(
 
 st.write("")
 
-# ------------------------
-# Upload files / folders
-# ------------------------
-st.header("Upload Files or Folder (ZIP)")
+# ======================================================
+# PAGE ROUTER
+# ======================================================
 
-uploaded_files = st.file_uploader(
-    "Upload files OR a ZIP folder",
-    accept_multiple_files=True,
-    type=["pdf", "docx", "png", "jpg", "jpeg", "zip"]
-)
+if page == "Upload":
+    st.header("⬆️ Upload Files or Folder (ZIP)")
 
-if uploaded_files and st.button("Upload"):
-    success_count = 0
+    uploaded_files = st.file_uploader(
+        "Upload files OR a ZIP folder",
+        accept_multiple_files=True,
+        type=["pdf", "docx", "png", "jpg", "jpeg", "zip"]
+    )
 
-    for uf in uploaded_files:
-        files = {"file": (uf.name, uf.getvalue())}
-        resp = requests.post(f"{BACKEND_URL}/api/upload", files=files)
+    if uploaded_files and st.button("Upload"):
+        success_count = 0
 
-        if resp.status_code == 200:
-            st.success(f"Uploaded: {uf.name}")
-            success_count += 1
+        for uf in uploaded_files:
+            files = {"file": (uf.name, uf.getvalue())}
+            resp = requests.post(f"{BACKEND_URL}/api/upload", files=files)
 
-            data = resp.json()
+            if resp.status_code == 200:
+                st.success(f"Uploaded: {uf.name}")
+                success_count += 1
 
-            # Only set session values if backend returned file_id
-            if "file_id" in data and data["file_id"] is not None:
-                st.session_state["last_uploaded_id"] = data["file_id"]
-                st.session_state["last_uploaded_filename"] = uf.name
-        else:
-            st.error(f"Failed to upload: {uf.name}")
+                data = resp.json()
+                if "file_id" in data and data["file_id"] is not None:
+                    st.session_state["last_uploaded_id"] = data["file_id"]
+                    st.session_state["last_uploaded_filename"] = uf.name
+            else:
+                st.error(f"Failed to upload: {uf.name}")
 
-    st.success(f"Uploaded {success_count} file(s) successfully!")
-
+        st.success(f"Uploaded {success_count} file(s) successfully!")
 
 # ======================================================
 # SEARCH PAGE
@@ -95,32 +105,67 @@ elif page == "Search":
 
     col1, col2 = st.columns(2)
 
-    # Semantic search
+    semantic_clicked = False
+    word_clicked = False
+
     with col1:
         if st.button("Semantic Search"):
-            resp = requests.get(f"{BACKEND_URL}/api/search", params={"query": query})
-            if resp.status_code == 200:
-                results = resp.json().get("results", [])
-                for r in results:
-                    st.markdown(f"### 📄 {r['filename']}")
-                    st.caption(f"Score: {r['score']:.2f}")
-                    st.write(r["snippet"])
-                    with st.expander("Summary"):
-                        st.write(r["summary"])
+            semantic_clicked = True
 
-    # Word-count search
     with col2:
         if st.button("Word Count Search"):
-            resp = requests.get(
-                f"{BACKEND_URL}/api/search/word",
-                params={"word": query},
-            )
-            if resp.status_code == 200:
-                r = resp.json().get("result")
-                if r:
-                    st.markdown(f"### 🏆 {r['filename']}")
-                    st.caption(f"Occurrences: {r['count']}")
-                    st.text_area("Full content", r["content"], height=300)
+            word_clicked = True
+
+    # =========================
+    # FULL-WIDTH RESULTS BELOW
+    # =========================
+
+    if semantic_clicked:
+        resp = requests.get(
+            f"{BACKEND_URL}/api/search",
+            params={"query": query},
+        )
+
+        if resp.status_code == 200:
+            results = resp.json()
+
+            st.divider()
+            st.subheader("🔎 Semantic Search Results")
+
+            for r in results:
+                st.markdown(f"### 📄 {r['filename']}")
+                st.caption(f"Score: {r['score']:.2f}")
+                st.write(highlight(r["snippet"], query))
+
+                with st.expander("Summary"):
+                    st.write(highlight(r["summary"], query))
+
+    if word_clicked:
+        resp = requests.get(
+            f"{BACKEND_URL}/api/search/word",
+            params={"word": query},
+        )
+
+        if resp.status_code == 200:
+            r = resp.json()
+
+            st.divider()
+            st.subheader("📊 Word Count Result")
+
+            if r:
+                st.markdown(f"### 📄 {r['filename']}")
+                st.caption(f"Occurrences: {r['count']}")
+
+                # 🔹 Show a short snippet instead of full content
+                content = r.get("content", "")
+                snippet = content[:500] + "..." if len(content) > 500 else content
+                st.write(snippet)
+
+                with st.expander("Full content"):
+                    st.write(content)
+            else:
+                st.warning("No matches found")
+
 
 # ======================================================
 # FILES PAGE (Resource Library)
@@ -146,14 +191,19 @@ else:
                 # Action buttons
                 c1, c2, c3, c4 = st.columns(4)
 
-                with c1:
-                    if st.button("📝 Summary", key=f"s_{f['id']}"):
-                        r = requests.get(
-                            f"{BACKEND_URL}/api/files/{f['id']}/summary",
-                            params={"mode": "medium"},
-                        )
-                        if r.status_code == 200:
-                            st.info(r.json()["summary"])
+                mode = st.selectbox(
+                    "Summary length",
+                    ["short", "medium", "long"],
+                    key=f"m_{f['id']}"
+                )
+
+                if st.button("📝 Summary", key=f"s_{f['id']}"):
+                    r = requests.get(
+                        f"{BACKEND_URL}/api/files/{f['id']}/summary",
+                        params={"mode": mode},
+                    )
+                    if r.status_code == 200:
+                        st.info(r.json())
 
                 with c2:
                     if st.button("🔗 Similar", key=f"sim_{f['id']}"):
@@ -162,8 +212,8 @@ else:
                             params={"top_k": 5},
                         )
                         if r.status_code == 200:
-                            for s in r.json().get("similar", []):
-                                st.write(f"- {s['filename']} ({s['score']:.2f})")
+                            for s in r.json():
+                                st.write(f"- File ID {s['id']} ({s['score']:.2f})")
 
                 with c3:
                     if st.button("🧬 Duplicates", key=f"d_{f['id']}"):
@@ -172,8 +222,14 @@ else:
                             params={"threshold": 0.9},
                         )
                         if r.status_code == 200:
-                            for d in r.json().get("duplicates", []):
-                                st.write(f"- {d['filename']}")
+                            data = r.json()
+
+                            st.subheader("Current file")
+                            st.write(f"{data['current_file']['filename']} (ID {data['current_file']['id']})")
+
+                            st.subheader("Duplicates")
+                            for d in data.get("duplicates", []):
+                                st.write(f"- {d['filename']} (ID {d['id']}, score {d['score']:.2f})")
 
                 with c4:
                     if st.button("🗑 Delete", key=f"del_{f['id']}"):
