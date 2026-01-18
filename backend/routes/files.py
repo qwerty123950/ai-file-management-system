@@ -75,7 +75,12 @@ async def upload_file(file: UploadFile = File(...)):
 # ===============================
 @router.get("/files")
 def list_files():
-    return get_all_files()
+    # 🔁 Ensure Qdrant matches DB after deletes
+    reindex_all_files()
+
+    files = get_all_files()
+    return files
+
 
 
 # ===============================
@@ -145,76 +150,28 @@ def reindex():
 def files_by_tag(tag: str):
     return get_files_by_tag(tag)
 
-# # ===============================
-# # LIST FILES
-# # ===============================
-# @router.get("/files")
-# def list_files():
-#     return get_all_files()
+@router.get("/files/{file_id}/content")
+def get_full_content(file_id: int):
+    from backend.services.file_service import ensure_db, DATABASE_PATH
+    import sqlite3
 
+    ensure_db()
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT filename, content FROM files WHERE id = ?",
+        (file_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
 
-# # ===============================
-# # SEMANTIC SEARCH
-# # ===============================
-# @router.get("/search")
-# def semantic_search(query: str, top_k: int = 5):
-#     return search_files(query, top_k)
+    if not row:
+        raise HTTPException(status_code=404, detail="File not found")
 
+    filename, content = row
 
-# # ===============================
-# # WORD SEARCH
-# # ===============================
-# @router.get("/search/word")
-# def word_search(word: str):
-#     result = search_file_by_word(word)
-#     if not result:
-#         raise HTTPException(status_code=404, detail="No matching file found")
-#     return result
-
-
-# # ===============================
-# # FILE SUMMARY MODES
-# # ===============================
-# @router.get("/summary/{file_id}")
-# def get_summary(file_id: int, mode: str = "medium"):
-#     return summarize_file_by_mode(file_id, mode)
-
-
-# # ===============================
-# # SIMILAR FILES
-# # ===============================
-# @router.get("/similar/{file_id}")
-# def similar_files(file_id: int):
-#     return find_similar_files(file_id)
-
-
-# # ===============================
-# # DUPLICATES
-# # ===============================
-# @router.get("/duplicates/{file_id}")
-# def duplicate_files(file_id: int):
-#     return check_duplicates(file_id)
-
-
-# # ===============================
-# # TAG FILTER
-# # ===============================
-# @router.get("/tags")
-# def files_by_tag(tag: str):
-#     return get_files_by_tag(tag)
-
-
-# # ===============================
-# # DELETE FILE
-# # ===============================
-# @router.delete("/files/{file_id}")
-# def remove_file(file_id: int):
-#     return delete_file(file_id)
-
-
-# # ===============================
-# # REINDEX
-# # ===============================
-# @router.post("/reindex")
-# def reindex():
-#     return reindex_all_files()
+    return {
+        "id": file_id,
+        "filename": filename,
+        "content": content or ""
+    }

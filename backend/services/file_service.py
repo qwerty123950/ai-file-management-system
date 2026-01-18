@@ -180,27 +180,36 @@ def process_file(file_path: str, filename: str) -> Optional[int]:
         content = ""
         summary = "No extractable text found in this document."
         summary_type = "placeholder"
-        embedding_source = "empty document"
         chunks: List[str] = []
         tags_str = ""
     else:
         content = cleaned if cleaned.strip() else raw_content
 
-        summary = summarize_text(content, mode="medium") or ""
-        summary = summary.strip()
-
-        if summary:
+        # ---------------- SAFE SUMMARY ----------------
+        try:
+            # Hard limit to avoid Pegasus crash
+            summary_input = content[:1800]
+            summary = summarize_text(summary_input, mode="medium") or ""
+            summary = summary.strip()
+            if not summary:
+                raise ValueError("empty summary")
             summary_type = "ai"
-        else:
+        except Exception:
             summary = (content[:400] + "...") if len(content) > 400 else content
             summary_type = "fallback"
 
-        embedding_source = content
         chunks = _split_into_chunks(content)
         tags_str = ", ".join(generate_tags(summary or content))
 
-    embedding = generate_embedding(embedding_source)
+    # ---------------- SAFE EMBEDDING ----------------
+    try:
+        # HARD limit embedding input
+        embedding_input = content[:2000] if content else "empty document"
+        embedding = generate_embedding(embedding_input)
+    except Exception:
+        embedding = generate_embedding("empty document")
 
+    # ---------------- DB INSERT ----------------
     ensure_db()
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
@@ -215,11 +224,13 @@ def process_file(file_path: str, filename: str) -> Optional[int]:
 
     file_id = cursor.lastrowid
     if file_id is None:
+        conn.close()
         raise RuntimeError("Failed to insert file into database")
 
     conn.commit()
     conn.close()
 
+    # ---------------- QDRANT ----------------
     points: List[PointStruct] = [
         PointStruct(
             id=int(file_id),
@@ -235,10 +246,15 @@ def process_file(file_path: str, filename: str) -> Optional[int]:
     ]
 
     for idx, chunk in enumerate(chunks):
+        try:
+            chunk_emb = generate_embedding(chunk[:2000])
+        except Exception:
+            continue
+
         points.append(
             PointStruct(
                 id=file_id * 10_000 + idx,
-                vector=generate_embedding(chunk),
+                vector=chunk_emb,
                 payload={
                     "file_id": file_id,
                     "filename": filename,
@@ -249,7 +265,9 @@ def process_file(file_path: str, filename: str) -> Optional[int]:
             )
         )
 
-    client.upsert(collection_name="files", points=points)
+    if points:
+        client.upsert(collection_name="files", points=points)
+
     return file_id
 
 
@@ -448,25 +466,50 @@ def reindex_all_files() -> Dict[str, Any]:
 # -------------------------------------------------------------------
 
 def summarize_file_by_mode(file_id: int, mode: str) -> str:
-    if mode not in ("short", "medium", "long"):
-        raise HTTPException(status_code=400, detail="Invalid mode")
-
     ensure_db()
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
-    cursor.execute("SELECT content FROM files WHERE id = ?", (file_id,))
+    cursor.execute("SELECT content, summary FROM files WHERE id = ?", (file_id,))
     row = cursor.fetchone()
     conn.close()
 
     if not row:
-        raise HTTPException(status_code=404, detail="File not found")
+        return "File not found."
 
-    content = row[0]
+    content, stored_summary = row
+
     if not content or not content.strip():
-        return "No extractable text found in this document."
+        return stored_summary or "No content available."
 
-    sentences = 1 if mode == "short" else 2 if mode == "medium" else 4
-    return summarize_with_sentence_limit(content, sentences=sentences)
+    # ---------------------------------------
+    # HARD SAFETY LIMITS (Pegasus-safe)
+    # ---------------------------------------
+    if mode == "short":
+        max_chars = 600
+    elif mode == "medium":
+        max_chars = 1200
+    elif mode == "long":
+        max_chars = 1800   # 🚨 DO NOT EXCEED THIS
+    else:
+        max_chars = 1200
+
+    safe_text = content[:max_chars]
+
+    try:
+        summary = summarize_text(safe_text, mode=mode)
+        if summary and summary.strip():
+            return summary.strip()
+    except Exception:
+        pass
+
+    # ---------------------------------------
+    # FINAL FALLBACK (never crash API)
+    # ---------------------------------------
+    fallback = content[:400]
+    if len(content) > 400:
+        fallback += "..."
+    return fallback
+
 
 
 def find_similar_files(file_id: int, top_k: int = 5) -> List[Dict[str, Any]]:

@@ -2,7 +2,6 @@
 
 import re
 
-
 def clean_text(text: str) -> str:
     """
     Basic cleanup for OCR / extracted text:
