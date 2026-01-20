@@ -10,6 +10,9 @@ BACKEND_URL = "http://localhost:8000"
 st.session_state.setdefault("files_cache", [])
 st.session_state.setdefault("selected_file_id", None)
 st.session_state.setdefault("page", "Files")
+st.session_state.setdefault("search_type", "Semantic Search")
+st.session_state.setdefault("search_query", "")
+st.session_state.setdefault("search_results", None)
 
 
 # ===============================
@@ -140,51 +143,93 @@ if st.session_state.page == "Upload":
 elif st.session_state.page == "Search":
     st.subheader("🔍 Search Files")
 
-    query = st.text_input("Search text").strip()
+    query = st.text_input("Enter search text").strip()
 
-    search_mode = st.radio(
+    search_type = st.radio(
         "Search type",
         ["Semantic Search", "Word Count Search"],
-        horizontal=True
+        horizontal=True,
     )
 
-    if st.button("🔎 Search") and query:
-        # ---------------- Semantic Search ----------------
-        if search_mode == "Semantic Search":
+    if st.button("Search"):
+        st.session_state.search_query = query
+        st.session_state.search_type = search_type
+
+        if search_type == "Semantic Search":
             r = requests.get(
                 f"{BACKEND_URL}/api/search",
                 params={"query": query},
             )
+            st.session_state.search_results = r.json() if r.status_code == 200 else []
 
-            if r.status_code == 200:
-                results = r.json()
-                if not results:
-                    st.info("No results found.")
-                else:
-                    for res in results:
-                        st.markdown(f"**📄 {res['filename']}**")
-                        st.write(highlight(res["snippet"], query))
-                        st.divider()
-
-        # ---------------- Word Count Search ----------------
         else:  # Word Count Search
             r = requests.get(
                 f"{BACKEND_URL}/api/search/word",
                 params={"word": query},
             )
+            st.session_state.search_results = r.json() if r.status_code == 200 else None
 
-            if r.status_code == 200:
-                data = r.json()
-                if not data:
-                    st.info("No matches found.")
-                else:
-                    st.markdown(f"**📄 {data['filename']}**")
-                    st.write(f"Occurrences: **{data['count']}**")
+    # ----------------------------------
+    # SEMANTIC SEARCH RESULTS
+    # ----------------------------------
+    if st.session_state.search_type == "Semantic Search":
+        results = st.session_state.search_results
 
-                    content = data.get("content", "")
-                    snippet = content[:500] + "..." if len(content) > 500 else content
-                    st.write(snippet)
+        if not results:
+            st.info("No semantic matches found.")
+        else:
+            st.divider()
+            st.subheader("🔎 Semantic Results")
 
+            for idx, res in enumerate(results):
+                filename = res.get("filename", "Unknown file")
+                score = res.get("score", 0.0)
+                summary = res.get("summary", "")
+                file_id = res.get("id")
+
+                st.markdown(f"### 📄 {filename}")
+                st.caption(f"Relevance score: **{score:.3f}**")
+
+                if summary:
+                    st.write(summary)
+
+                show_full = st.checkbox(
+                    "Show full content",
+                    key=f"semantic_full_{file_id}",
+                )
+
+                if show_full and file_id is not None:
+                    content_resp = requests.get(
+                        f"{BACKEND_URL}/api/files/{file_id}/content"
+                    )
+                    if content_resp.status_code == 200:
+                        st.text_area(
+                            "Full content",
+                            content_resp.json().get("content", ""),
+                            height=300,
+                            key=f"semantic_content_{file_id}",
+                        )
+
+                st.divider()
+
+    # ----------------------------------
+    # WORD COUNT SEARCH RESULTS
+    # ----------------------------------
+    if st.session_state.search_type == "Word Count Search":
+        data = st.session_state.search_results
+
+        # Word-count API returns a DICT, not a list
+        if not isinstance(data, dict) or not data.get("filename"):
+            st.info("No word count matches found.")
+        else:
+            st.divider()
+            st.subheader("📊 Word Count Result")
+
+            st.markdown(f"### 📄 {data['filename']}")
+            st.caption(f"Occurrences: **{data.get('count', 0)}**")
+
+            highlighted = highlight(data.get("content", ""), query)
+            st.markdown(highlighted, unsafe_allow_html=True)
 
 # ======================================================
 # FILES PAGE

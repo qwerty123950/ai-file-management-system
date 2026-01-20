@@ -1,6 +1,8 @@
 # ai/summarizer.py
 
-from typing import List, Tuple
+from typing import Tuple
+from typing import Any, Dict, List
+
 import re
 
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
@@ -117,6 +119,7 @@ def _dedupe_sentences(text: str) -> str:
     return " ".join(unique)
 
 
+
 def _summarize_single(text: str, mode: str = "medium") -> str:
     """
     Summarize a single piece of text that already fits into the model capacity.
@@ -127,19 +130,44 @@ def _summarize_single(text: str, mode: str = "medium") -> str:
 
     max_length, min_length = _dynamic_lengths(mode, input_len)
 
-    result = summarizer(
+    # Run pipeline
+    output = summarizer(
         text,
         max_length=max_length,
         min_length=min_length,
         do_sample=False,
-        num_beams=4,            # more careful search
-        no_repeat_ngram_size=4, # discourage n-gram repetition
+        num_beams=4,
+        no_repeat_ngram_size=4,
     )
-    raw_summary = result[0]["summary_text"]
+
+    # 🔒 Normalize pipeline output (list | generator → list)
+    normalized = _normalize_pipeline_output(output)
+    if not normalized:
+        return ""
+
+    raw_summary = normalized[0].get("summary_text", "")
+    if not isinstance(raw_summary, str):
+        raw_summary = str(raw_summary)
+
     cleaned = _dedupe_sentences(raw_summary)
     return cleaned
 
+def _normalize_pipeline_output(result: Any) -> List[Dict[str, str]]:
+    """
+    Normalize HuggingFace pipeline output to List[Dict[str, str]].
+    Works around weak pipeline typing.
+    """
+    if result is None:
+        return []
 
+    # Generator / iterator → list
+    if hasattr(result, "__iter__") and not isinstance(result, list):
+        result = list(result)
+
+    if isinstance(result, list):
+        return [r for r in result if isinstance(r, dict)]
+
+    return []
 def summarize_text(text: str, mode: str = "medium") -> str:
     """
     Safe summarization that:

@@ -4,7 +4,6 @@ import os
 os.environ["TRANSFORMERS_OFFLINE"] = "1"
 os.environ["HF_HUB_OFFLINE"] = "1"
 os.environ["HF_HOME"] = os.path.expanduser("~/.cache/huggingface")
-os.environ["TRANSFORMERS_CACHE"] = os.path.expanduser("~/.cache/huggingface")
 
 
 from typing import List
