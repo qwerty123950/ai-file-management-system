@@ -1,0 +1,53 @@
+#backend/services/chat_service.py
+
+import os
+from groq import Groq
+
+from dotenv import load_dotenv
+load_dotenv()
+
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
+def groq_chat(document: str, instruction: str) -> str:
+    if not document.strip():
+        return "No document content provided."
+    
+    MAX_CHARS = 12000  # safe for Groq
+    document = document[:MAX_CHARS]
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are an expert technical document editor. "
+                "You MUST ignore any content not related to the requested topic. "
+                "If content is unrelated, discard it completely. "
+                "Do not mention unrelated tools, filenames, datasets, or appendices."
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"""
+DOCUMENT:
+{document}
+
+TASK:
+{instruction}
+
+RULES:
+- Ignore appendices, references, tools, filenames, links, and metadata
+- Focus only on the requested topic
+- Output clean prose only
+- Respect the requested word count
+""",
+        },
+    ]
+
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",  # ✅ WORKING MODEL
+        messages=messages,   # type: ignore[arg-type]
+        temperature=0.2,
+        max_tokens=2048,
+    )
+
+    return response.choices[0].message.content or ""

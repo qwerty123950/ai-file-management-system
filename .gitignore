@@ -67,3 +67,81 @@ docker-compose.override.yml
 # Streamlit
 # ==========================
 .streamlit/
+
+# ==========================
+# Environment Variables
+# ==========================
+.env
+.env.*.local
+
+# ==========================
+# Misc
+# ==========================
+*.bak
+*.tmp
+*.swp
+*~
+
+# ==========================
+# IDEs
+# ==========================
+.idea/
+*.iml
+*.ipr
+*.iws
+*.sublime-project
+*.sublime-workspace
+*.tmproj
+*.codekit-cache
+*.komodoproject
+*.kate-swp
+*.directory
+*.project
+*.cproject
+*.settings/
+*.launch
+*.buildpath
+*.classpath
+*.factorypath
+*.externalToolBuilders/
+*.loadpath
+*.mymetadata
+*.gradle/
+.gradle/
+build/
+out/
+target/
+bin/
+.settings/
+.metadata/
+.recommenders/
+*.swc
+*.actionScriptProperties
+*.flexProperties
+*.hxproj    
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.user
+*.dbmdl
+*.opensdf
+*.sdf
+*.cachefile
+*.pdb
+*.ipch
+*.aps
+*.ncb
+*.suo
+*.unsuccessfulbuild
+*.xcodeproj/
+*.xcworkspace/
+*.xcuserstate
+*.xcuserdata/
+*.moc
+*.qrc
+*.autosave
+*.class
+*.jar
+*.war
+*.ear
+*.iml

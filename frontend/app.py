@@ -62,8 +62,8 @@ with st.sidebar:
 
     page = st.radio(
         "Navigation",
-        ["Files", "Upload", "Search", "Merge"],
-        index=["Files", "Upload", "Search", "Merge"].index(st.session_state.page),
+        ["Files", "Upload", "Search", "Merge", "Chatbot"],
+        index=["Files", "Upload", "Search", "Merge","Chatbot"].index(st.session_state.page),
     )
 
     if page != st.session_state.page:
@@ -408,3 +408,126 @@ elif st.session_state.page == "Merge":
                         st.success("Merged file saved successfully")
                 else:
                     st.error("Merge failed")
+
+# ======================================================
+# MERGE PAGE
+# ======================================================
+elif st.session_state.page == "Chatbot":
+    st.subheader("🤖 Grok Document Chatbot")
+
+    files = st.session_state.files_cache
+
+    source = st.radio(
+        "Select input source",
+        ["From existing files", "Upload local file"],
+        horizontal=True,
+    )
+
+    content = ""
+
+    # -------------------------------
+    # From DB files
+    # -------------------------------
+    if source == "From existing files":
+        options = {
+            f"{f['filename']} (ID {f['display_id']})": f["id"]
+            for f in files
+        }
+
+        selected = st.multiselect(
+            "Select files (order matters)",
+            options=list(options.keys()),
+        )
+
+        if selected:
+            contents = []
+            for label in selected:
+                fid = options[label]
+                r = requests.get(f"{BACKEND_URL}/api/files/{fid}/content")
+                if r.status_code == 200:
+                    contents.append(r.json()["content"])
+            content = "\n\n".join(contents)
+
+    # -------------------------------
+    # Local upload
+    # -------------------------------
+    else:
+        uploaded = st.file_uploader(
+            "Upload a document",
+            type=["txt", "pdf", "docx"],
+        )
+        if uploaded:
+            content = uploaded.read().decode("utf-8", errors="ignore")
+
+    # -------------------------------
+    # Chat
+    # -------------------------------
+    if content:
+        st.success(f"Loaded document ({len(content.split())} words)")
+
+        instruction = st.text_area(
+            "What do you want to do with this document?",
+            placeholder="e.g. Shorten to 500 words focusing on cybersecurity risks",
+            height=120,
+        )
+
+        if st.button("Ask Groq", type="primary"):
+            with st.spinner("Groq is thinking..."):
+                r = requests.post(
+                    f"{BACKEND_URL}/api/chat",
+                    json={
+                        "content": content,
+                        "instruction": instruction,
+                    },
+                    timeout=120,
+                )
+
+            if r.status_code == 200:
+                result = r.json()["result"]
+                st.session_state.chat_result = result
+            else:
+                st.error("Chat failed")
+
+    # -------------------------------
+    # Result + Download
+    # -------------------------------
+    if "chat_result" in st.session_state:
+        st.divider()
+        st.subheader("🧾 Result")
+
+        st.text_area(
+            "Generated content",
+            st.session_state.chat_result,
+            height=400,
+        )
+
+        format = st.selectbox(
+            "Download format",
+            [".txt", ".docx", ".pdf"],
+        )
+
+        if st.button("⬇ Download result"):
+            with st.spinner("Preparing download..."):
+                r = requests.post(
+                    f"{BACKEND_URL}/api/chat/convert",
+                    json={
+                        "content": st.session_state.chat_result,
+                        "format": format,
+                    },
+                    timeout=60,
+                )
+
+                if r.status_code == 200:
+                    st.download_button(
+                        "Click to download",
+                        data=r.content,              # ✅ raw bytes
+                        file_name=f"chat_result{format}",
+                        mime={
+                            ".txt": "text/plain",
+                            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            ".pdf": "application/pdf",
+                        }[format],
+                    )
+                else:
+                    st.error("Failed to generate download")
+
