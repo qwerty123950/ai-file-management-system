@@ -8,7 +8,8 @@ from docx import Document
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-
+from reportlab.lib.units import inch
+import textwrap
 
 from fastapi import HTTPException
 from qdrant_client import QdrantClient
@@ -765,17 +766,44 @@ def to_docx(text: str) -> bytes:
     return buf.read()
 
 def to_pdf(text: str) -> bytes:
+    """
+    Robust PDF writer:
+    - Handles long text
+    - Handles Unicode safely
+    - Wraps lines properly
+    - Avoids ReportLab crashes
+    """
+     
     buf = BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
-    width, height = A4
 
-    y = height - 40
-    for line in text.split("\n"):
-        if y < 40:
-            c.showPage()
-            y = height - 40
-        c.drawString(40, y, line[:100])
-        y -= 14
+    width, height = A4
+    x_margin = 1 * inch
+    y_margin = 1 * inch
+    max_width = width - 2 * x_margin
+
+    y = height - y_margin
+    line_height = 14
+
+    # 🔒 Normalize text (very important)
+    safe_text = (
+        text.replace("\r\n", "\n")
+            .replace("\r", "\n")
+    )
+
+    for paragraph in safe_text.split("\n\n"):
+        wrapped_lines = textwrap.wrap(paragraph, 90)
+
+        for line in wrapped_lines:
+            if y < y_margin:
+                c.showPage()
+                y = height - y_margin
+
+            # Force ASCII-safe rendering
+            c.drawString(x_margin, y, line.encode("utf-8", "ignore").decode("utf-8"))
+            y -= line_height
+
+        y -= line_height  # paragraph spacing
 
     c.save()
     buf.seek(0)

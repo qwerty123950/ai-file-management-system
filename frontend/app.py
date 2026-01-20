@@ -410,10 +410,10 @@ elif st.session_state.page == "Merge":
                     st.error("Merge failed")
 
 # ======================================================
-# MERGE PAGE
+# CHATBOT PAGE
 # ======================================================
 elif st.session_state.page == "Chatbot":
-    st.subheader("🤖 Grok Document Chatbot")
+    st.subheader("🤖 Groq Document Chatbot")
 
     files = st.session_state.files_cache
 
@@ -445,7 +445,7 @@ elif st.session_state.page == "Chatbot":
                 fid = options[label]
                 r = requests.get(f"{BACKEND_URL}/api/files/{fid}/content")
                 if r.status_code == 200:
-                    contents.append(r.json()["content"])
+                    contents.append(r.json().get("content", ""))
             content = "\n\n".join(contents)
 
     # -------------------------------
@@ -462,12 +462,12 @@ elif st.session_state.page == "Chatbot":
     # -------------------------------
     # Chat
     # -------------------------------
-    if content:
+    if content.strip():
         st.success(f"Loaded document ({len(content.split())} words)")
 
         instruction = st.text_area(
             "What do you want to do with this document?",
-            placeholder="e.g. Shorten to 500 words focusing on cybersecurity risks",
+            placeholder="e.g. Shorten to 500 words focusing on Apache Pig",
             height=120,
         )
 
@@ -479,25 +479,26 @@ elif st.session_state.page == "Chatbot":
                         "content": content,
                         "instruction": instruction,
                     },
-                    timeout=120,
+                    timeout=180,
                 )
 
             if r.status_code == 200:
-                result = r.json()["result"]
-                st.session_state.chat_result = result
+                result = r.json().get("result", "").strip()
+                st.session_state.chat_final = result  # 🔒 LOCK OUTPUT
             else:
                 st.error("Chat failed")
+                st.stop()
 
     # -------------------------------
     # Result + Download
     # -------------------------------
-    if "chat_result" in st.session_state:
+    if st.session_state.get("chat_final"):
         st.divider()
         st.subheader("🧾 Result")
 
         st.text_area(
             "Generated content",
-            st.session_state.chat_result,
+            st.session_state.chat_final,
             height=400,
         )
 
@@ -511,23 +512,22 @@ elif st.session_state.page == "Chatbot":
                 r = requests.post(
                     f"{BACKEND_URL}/api/chat/convert",
                     json={
-                        "content": st.session_state.chat_result,
+                        "content": st.session_state.chat_final,
                         "format": format,
                     },
-                    timeout=60,
+                    timeout=120,
                 )
 
-                if r.status_code == 200:
-                    st.download_button(
-                        "Click to download",
-                        data=r.content,              # ✅ raw bytes
-                        file_name=f"chat_result{format}",
-                        mime={
-                            ".txt": "text/plain",
-                            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            ".pdf": "application/pdf",
-                        }[format],
-                    )
-                else:
-                    st.error("Failed to generate download")
-
+            if r.status_code == 200:
+                st.download_button(
+                    label="Click to download",
+                    data=r.content,  # ✅ RAW BYTES (IMPORTANT)
+                    file_name=f"chat_result{format}",
+                    mime={
+                        ".txt": "text/plain",
+                        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        ".pdf": "application/pdf",
+                    }[format],
+                )
+            else:
+                st.error("Failed to generate download")
