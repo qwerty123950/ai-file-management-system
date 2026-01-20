@@ -140,14 +140,50 @@ if st.session_state.page == "Upload":
 elif st.session_state.page == "Search":
     st.subheader("🔍 Search Files")
 
-    query = st.text_input("Search text")
+    query = st.text_input("Search text").strip()
 
-    if st.button("Semantic Search"):
-        r = requests.get(f"{BACKEND_URL}/api/search", params={"query": query})
-        if r.status_code == 200:
-            for res in r.json():
-                st.markdown(f"**{res['filename']}**")
-                st.write(highlight(res["snippet"], query))
+    search_mode = st.radio(
+        "Search type",
+        ["Semantic Search", "Word Count Search"],
+        horizontal=True
+    )
+
+    if st.button("🔎 Search") and query:
+        # ---------------- Semantic Search ----------------
+        if search_mode == "Semantic Search":
+            r = requests.get(
+                f"{BACKEND_URL}/api/search",
+                params={"query": query},
+            )
+
+            if r.status_code == 200:
+                results = r.json()
+                if not results:
+                    st.info("No results found.")
+                else:
+                    for res in results:
+                        st.markdown(f"**📄 {res['filename']}**")
+                        st.write(highlight(res["snippet"], query))
+                        st.divider()
+
+        # ---------------- Word Count Search ----------------
+        else:  # Word Count Search
+            r = requests.get(
+                f"{BACKEND_URL}/api/search/word",
+                params={"word": query},
+            )
+
+            if r.status_code == 200:
+                data = r.json()
+                if not data:
+                    st.info("No matches found.")
+                else:
+                    st.markdown(f"**📄 {data['filename']}**")
+                    st.write(f"Occurrences: **{data['count']}**")
+
+                    content = data.get("content", "")
+                    snippet = content[:500] + "..." if len(content) > 500 else content
+                    st.write(snippet)
 
 
 # ======================================================
