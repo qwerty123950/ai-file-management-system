@@ -60,8 +60,8 @@ with st.sidebar:
 
     page = st.radio(
         "Navigation",
-        ["Files", "Upload", "Search"],
-        index=["Files", "Upload", "Search"].index(st.session_state.page),
+        ["Files", "Upload", "Search", "Merge"],
+        index=["Files", "Upload", "Search", "Merge"].index(st.session_state.page),
     )
 
     if page != st.session_state.page:
@@ -234,7 +234,7 @@ elif st.session_state.page == "Search":
 # ======================================================
 # FILES PAGE
 # ======================================================
-else:
+elif st.session_state.page == "Files":
     # ---------------- LIST VIEW ----------------
     if st.session_state.selected_file_id is None:
         st.subheader("📚 All Files")
@@ -336,3 +336,60 @@ else:
                 st.session_state.selected_file_id = None
                 st.success("File deleted")
                 st.rerun()
+
+# ======================================================
+# MERGE PAGE
+# ======================================================
+elif st.session_state.page == "Merge":
+    st.subheader("🧩 Merge Files")
+
+    files = st.session_state.files_cache
+
+    if not files:
+        st.info("No files available to merge.")
+    else:
+        # Map display names → IDs
+        file_map = {
+            f"{f.get('filename', 'Unnamed')} (ID {f.get('display_id')})": f["id"]
+            for f in files
+        }
+
+        selected_labels = st.multiselect(
+            "Select files to merge (order matters)",
+            options=list(file_map.keys()),
+        )
+        merged_filename = st.text_input("Merged file name", placeholder="merged_document.txt",)
+
+        download_after_merge = st.checkbox("Download merged file to my system")
+
+        if st.button("Merge Files", type="primary"):
+            if len(selected_labels) < 2:
+                st.warning("Select at least two files.")
+            elif not merged_filename.strip():
+                st.warning("Please enter a file name.")
+            else:
+                file_ids = [file_map[label] for label in selected_labels]
+
+                with st.spinner("Merging files..."):
+                    r = requests.post(
+                        f"{BACKEND_URL}/api/files/merge",
+                        json={
+                            "file_ids": file_ids,
+                            "filename": merged_filename.strip(),
+                            "download": download_after_merge,
+                        },
+                        timeout=30,stream=True,
+                    )
+
+                if r.status_code == 200:
+                    if download_after_merge:
+                        st.download_button(
+                            label="⬇ Download merged file",
+                            data=r.content,
+                            file_name=f"{merged_filename}.txt",
+                            mime="text/plain",
+                        )
+                    else:
+                        st.success("Merged file saved successfully")
+                else:
+                    st.error("Merge failed")

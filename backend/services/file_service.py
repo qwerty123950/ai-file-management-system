@@ -154,6 +154,22 @@ def _get_file_metadata_map(file_ids: List[int]) -> Dict[int, Dict[str, Any]]:
         for r in rows
     }
 
+def get_file_content_by_id(file_id: int) -> str:
+    ensure_db()
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT content FROM files WHERE id = ?",
+        (file_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row or not row[0]:
+        return ""
+
+    return row[0]
 
 def _count_word_occurrences(text: str, word: str) -> int:
     if not text or not word:
@@ -663,3 +679,68 @@ def search_file_by_word(word: str) -> Optional[Dict[str, Any]]:
 
 def search_file_by_word_count(query: str) -> Optional[Dict[str, Any]]:
     return search_file_by_word(query)
+
+def create_file_from_text(filename: str, content: str) -> int:
+    if not content.strip():
+        raise ValueError("Cannot create empty file")
+
+    cleaned = clean_text(content)
+
+    # ---- summary (safe) ----
+    try:
+        summary_input = cleaned[:1800]
+        summary = summarize_text(summary_input, mode="medium") or ""
+        summary_type = "ai" if summary else "fallback"
+    except Exception:
+        summary = cleaned[:400] + "..." if len(cleaned) > 400 else cleaned
+        summary_type = "fallback"
+
+    tags_str = ", ".join(generate_tags(summary or cleaned))
+
+    # ---- embedding ----
+    try:
+        embedding = generate_embedding(cleaned[:2000])
+    except Exception:
+        embedding = generate_embedding("empty document")
+
+    # ---- DB insert ----
+    ensure_db()
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        INSERT INTO files (filename, filepath, content, summary, summary_type, tags)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (filename, "", cleaned, summary, summary_type, tags_str),
+    )
+
+    file_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+
+    if file_id is None:
+        raise RuntimeError("Failed to create merged file")
+
+    file_id = int(file_id)  # 🔒 type-safe
+
+    # ---- Qdrant ----
+    client.upsert(
+        collection_name="files",
+        points=[
+            PointStruct(
+                id=file_id,
+                vector=embedding,
+                payload={
+                    "file_id": file_id,
+                    "filename": filename,
+                    "is_doc_level": True,
+                    "chunk_index": -1,
+                    "text": summary,
+                },
+            )
+        ],
+    )
+
+    return file_id

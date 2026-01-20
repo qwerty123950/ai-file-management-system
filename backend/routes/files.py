@@ -6,6 +6,10 @@ import os
 import zipfile
 import io
 
+from fastapi.responses import StreamingResponse
+from io import BytesIO
+from pydantic import BaseModel
+from typing import List
 from backend.services.file_service import (
     process_file,
     search_files,
@@ -18,6 +22,8 @@ from backend.services.file_service import (
     get_files_by_tag,
     search_file_by_word,
     search_file_by_word_count,
+    get_file_content_by_id,
+    create_file_from_text,
 )
 
 router = APIRouter()
@@ -26,6 +32,12 @@ UPLOAD_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
 )
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+class MergeRequest(BaseModel):
+    file_ids: List[int]
+    filename: str
+    download: bool = False
+
 
 # ===============================
 # Upload: FILES + ZIP
@@ -175,3 +187,41 @@ def get_full_content(file_id: int):
         "filename": filename,
         "content": content or ""
     }
+
+#Merge Route
+@router.post("/files/merge")
+def merge_files(req: MergeRequest):
+    contents = []
+
+    for file_id in req.file_ids:
+        content = get_file_content_by_id(file_id)
+        if content:
+            contents.append(content.strip())
+
+    if not contents:
+        raise HTTPException(
+            status_code=400,
+            detail="No valid files to merge"
+        )
+
+    merged_text = "\n\n".join(contents)
+
+    new_file_id = create_file_from_text(
+        filename=req.filename,
+        content=merged_text,
+    )
+    if req.download is True:
+        file_bytes = merged_text.encode("utf-8")
+        return StreamingResponse(
+            BytesIO(file_bytes),
+            media_type="text/plain",
+            headers={
+                "Content-Disposition": f'attachment; filename="{req.filename}.txt"'
+            },
+        )
+
+    return {
+        "id": new_file_id,
+        "filename": req.filename,
+    }
+
