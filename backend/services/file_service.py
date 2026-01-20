@@ -4,6 +4,11 @@ import os
 import sqlite3
 import re
 from typing import List, Dict, Any, Optional
+from docx import Document
+from io import BytesIO
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+
 
 from fastapi import HTTPException
 from qdrant_client import QdrantClient
@@ -154,7 +159,7 @@ def _get_file_metadata_map(file_ids: List[int]) -> Dict[int, Dict[str, Any]]:
         for r in rows
     }
 
-def get_file_content_by_id(file_id: int) -> str:
+def get_file_content_by_id(file_id: int) -> str | None:
     ensure_db()
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
@@ -744,3 +749,34 @@ def create_file_from_text(filename: str, content: str) -> int:
     )
 
     return file_id
+
+def to_txt(text: str) -> bytes:
+    return text.encode("utf-8")
+
+
+def to_docx(text: str) -> bytes:
+    doc = Document()
+    for para in text.split("\n\n"):
+        doc.add_paragraph(para)
+
+    buf = BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf.read()
+
+def to_pdf(text: str) -> bytes:
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    width, height = A4
+
+    y = height - 40
+    for line in text.split("\n"):
+        if y < 40:
+            c.showPage()
+            y = height - 40
+        c.drawString(40, y, line[:100])
+        y -= 14
+
+    c.save()
+    buf.seek(0)
+    return buf.read()

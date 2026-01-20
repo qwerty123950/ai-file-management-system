@@ -1,3 +1,5 @@
+#frontend/apps.py
+
 import streamlit as st
 import requests
 import re
@@ -358,7 +360,16 @@ elif st.session_state.page == "Merge":
             "Select files to merge (order matters)",
             options=list(file_map.keys()),
         )
-        merged_filename = st.text_input("Merged file name", placeholder="merged_document.txt",)
+        merged_filename = st.text_input(
+            "Merged file name (without extension)", 
+            placeholder="merged_document",
+            value="merged_file"
+            )
+        
+        output_format = st.selectbox(
+            "Output format",
+            [".txt", ".docx", ".pdf"]
+        )
 
         download_after_merge = st.checkbox("Download merged file to my system")
 
@@ -368,26 +379,30 @@ elif st.session_state.page == "Merge":
             elif not merged_filename.strip():
                 st.warning("Please enter a file name.")
             else:
-                file_ids = [file_map[label] for label in selected_labels]
+                payload = {
+                    "file_ids": [file_map[l] for l in selected_labels],
+                    "filename": merged_filename,
+                    "format": output_format,
+                    "download": download_after_merge
+                }
 
                 with st.spinner("Merging files..."):
                     r = requests.post(
                         f"{BACKEND_URL}/api/files/merge",
-                        json={
-                            "file_ids": file_ids,
-                            "filename": merged_filename.strip(),
-                            "download": download_after_merge,
-                        },
-                        timeout=30,stream=True,
+                        json=payload,timeout=30,stream=True,
                     )
 
                 if r.status_code == 200:
                     if download_after_merge:
                         st.download_button(
                             label="⬇ Download merged file",
-                            data=r.content,
-                            file_name=f"{merged_filename}.txt",
-                            mime="text/plain",
+                            data=r.content,          # ✅ RAW BYTES
+                            file_name=f"{merged_filename}{output_format}",
+                            mime={
+                                ".txt": "text/plain",
+                                ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                ".pdf": "application/pdf",
+                            }[output_format],
                         )
                     else:
                         st.success("Merged file saved successfully")

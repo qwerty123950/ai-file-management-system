@@ -24,6 +24,9 @@ from backend.services.file_service import (
     search_file_by_word_count,
     get_file_content_by_id,
     create_file_from_text,
+    to_txt,
+    to_docx,
+    to_pdf,
 )
 
 router = APIRouter()
@@ -36,8 +39,8 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 class MergeRequest(BaseModel):
     file_ids: List[int]
     filename: str
+    format: str
     download: bool = False
-
 
 # ===============================
 # Upload: FILES + ZIP
@@ -210,16 +213,30 @@ def merge_files(req: MergeRequest):
         filename=req.filename,
         content=merged_text,
     )
-    if req.download is True:
-        file_bytes = merged_text.encode("utf-8")
+
+    # ---------------- DOWNLOAD MODE ----------------
+    if req.download:
+        if req.format == ".txt":
+            data = to_txt(merged_text)
+            mime = "text/plain"
+        elif req.format == ".docx":
+            data = to_docx(merged_text)
+            mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        elif req.format == ".pdf":
+            data = to_pdf(merged_text)
+            mime = "application/pdf"
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported format")
+       
         return StreamingResponse(
-            BytesIO(file_bytes),
-            media_type="text/plain",
+            BytesIO(data),
+            media_type=mime,
             headers={
-                "Content-Disposition": f'attachment; filename="{req.filename}.txt"'
+                "Content-Disposition": f'attachment; filename="{req.filename}{req.format}"'
             },
         )
-
+    
+    # ---------------- SAVE-ONLY MODE ----------------
     return {
         "id": new_file_id,
         "filename": req.filename,
