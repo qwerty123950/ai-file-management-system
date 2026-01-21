@@ -1,12 +1,16 @@
 🌟 AI File Management System
 
-An AI‑powered document intelligence platform with OCR, semantic search, summarization, tagging & duplicate detection.
+An AI‑powered document intelligence platform that enables intelligent document processing, semantic search, summarization, tagging, duplicate detection, merging, and AI‑assisted document rewriting through an interactive Streamlit interface.
 
 🚀 Overview
 
-This system intelligently processes documents by:
+The AI File Management System is designed to help users upload, analyze, search, compare, merge, and transform documents intelligently using modern AI techniques.
 
-🔍 Extracting text (PDF / DOCX / Images via OCR)
+Core Capabilities
+
+📄 Upload documents (PDF, DOCX, images)
+
+🔍 Extracting text via OCR
 
 ✨ Generating AI summaries (short / medium / long)
 
@@ -18,17 +22,24 @@ This system intelligently processes documents by:
 
 🔡 Keyword‑frequency deep search
 
-🖥 Full Streamlit UI for interaction
+🧩 Merge multiple files into a single document
 
-Upload → Process → Search → Explore → Compare
+🤖 AI chatbot for document rewriting, shortening, and topic‑focused extraction
+
+⬇ Download outputs as TXT, DOCX, or PDF
+
+🖥 Full-featured Streamlit UI
+
+Workflow:
+Upload → Process → Search → Explore → Compare → Merge → Rewrite → Download
 
 🧩 Phase‑by‑Phase Development
 
-🌱 Phase 0 — Base Version
+🌱 Phase 0 — Base Version (Foundation)
 
 	✔ File upload (PDF, DOCX, Images)
 
-	✔ OCR text extraction
+	✔ OCR text extraction using Tesseract
 
 	✔ Store text + metadata in SQLite
 
@@ -48,11 +59,11 @@ Upload → Process → Search → Explore → Compare
 
 	✔ Semantic search now returns:
 
-	✔ Best‑matching snippet
-
-	✔ Document summary
-
-	✔ Similarity score
+		✔ Best‑matching snippet
+	
+		✔ Document summary
+	
+		✔ Similarity score
 
 
 ✔ Endpoint:   
@@ -71,8 +82,7 @@ Upload → Process → Search → Explore → Compare
 
 	✔ Powered by Pegasus‑XSUM summarization model.
 
-	✔ Streamlit UI button added.
-
+	✔ UI control added in Streamlit
 
 ✔ Endpoint:  
 	
@@ -86,10 +96,10 @@ Upload → Process → Search → Explore → Compare
 
 	✔ Streamlit buttons:
 
-	✔ Show similar files
-
-	✔ Show duplicates
-
+		✔ Show similar files
+	
+		✔ Show duplicates
+	
 
 ✔ Endpoints:
 
@@ -124,6 +134,50 @@ Upload → Process → Search → Explore → Compare
 
 	GET /api/search-word?query=word
 
+🔹 Phase 6 — File Merge & Export System
+
+	✔ Select multiple files from database
+	
+	✔ Merge content in selected order
+	
+	✔ Save merged file to database
+	
+	✔ Download merged file as:
+	
+		.txt
+		
+		.docx
+		
+		.pdf
+
+Endpoint
+
+	POST /api/files/merge
+	
+🔹 Phase 7 — AI Document Chatbot (Groq‑Powered)
+
+✔ Upload document from:
+
+	Database
+	
+	Local system
+✔ Ask AI to:
+
+	Shorten documents (e.g., 500 or 1000 words)
+	
+	Focus on a specific topic
+
+	Rewrite content cleanly
+	
+	✔ Powered by Groq (LLaMA‑3.3‑70B‑Versatile)
+	
+	✔ Download AI‑generated output as TXT / DOCX / PDF
+
+Endpoints
+
+	POST /api/chat
+	POST /api/chat/convert
+
 
 🖥 System Architecture
 
@@ -136,8 +190,10 @@ Upload → Process → Search → Explore → Compare
         +-----------------------------+
         |        FastAPI Backend      |
         |  - Upload processing        |
-        |  - Summaries & OCR          |
+        |  - OCR & Preprocessing      |
+		|  - Summarization            |
         |  - Semantic Search          |
+		|  - File Merge & Chatbox     |
         +-----------+-----------------+
                     |
         +-----------+-------------+
