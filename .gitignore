@@ -18,6 +18,9 @@ env/
 .venv/
 .conda/
 
+.gitignore
+.gitignore_global
+
 # Poetry / Pipenv
 poetry.lock
 Pipfile.lock
