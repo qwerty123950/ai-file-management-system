@@ -100,9 +100,9 @@ def init_qdrant() -> None:
         )
 
 
-# Run once on import
-init_db()
-init_qdrant()
+# Run once on import (now moved to FastAPI startup event in main.py)
+# init_db()
+# init_qdrant()
 
 
 # -------------------------------------------------------------------
