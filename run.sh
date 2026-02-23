@@ -7,7 +7,7 @@ source venv/bin/activate
 echo "▶ Checking Qdrant container"
 if ! docker ps --format '{{.Names}}' | grep -q '^qdrant$'; then
   echo "▶ Starting Qdrant container"
-  docker start qdrant
+  docker start qdrant || docker run -d --name qdrant --network host -v qdrant_storage:/qdrant/storage qdrant/qdrant
 else
   echo "✔ Qdrant already running"
 fi

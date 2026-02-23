@@ -149,7 +149,7 @@ elif st.session_state.page == "Search":
 
     search_type = st.radio(
         "Search type",
-        ["Semantic Search", "Word Count Search"],
+        ["Semantic Search", "Word Count Search", "Tag Search"],
         horizontal=True,
     )
 
@@ -164,12 +164,16 @@ elif st.session_state.page == "Search":
             )
             st.session_state.search_results = r.json() if r.status_code == 200 else []
 
-        else:  # Word Count Search
+        elif search_type == "Word Count Search":
             r = requests.get(
                 f"{BACKEND_URL}/api/search/word",
                 params={"word": query},
             )
             st.session_state.search_results = r.json() if r.status_code == 200 else None
+
+        elif search_type == "Tag Search":
+            r = requests.get(f"{BACKEND_URL}/api/files/tag/{query}")
+            st.session_state.search_results = r.json() if r.status_code == 200 else []
 
     # ----------------------------------
     # SEMANTIC SEARCH RESULTS
@@ -233,6 +237,35 @@ elif st.session_state.page == "Search":
             highlighted = highlight(data.get("content", ""), query)
             st.markdown(highlighted, unsafe_allow_html=True)
 
+    # ----------------------------------
+    # TAG SEARCH RESULTS
+    # ----------------------------------
+    if st.session_state.search_type == "Tag Search":
+        results = st.session_state.search_results
+
+        if not results:
+            st.info("No files found with that tag.")
+        else:
+            st.divider()
+            st.subheader("🏷️ Tag Search Results")
+
+            for res in results:
+                filename = res.get("filename", "Unknown file")
+                tags = res.get("tags", "")
+                file_id = res.get("id")
+
+                st.markdown(f"### 📄 {filename}")
+                if tags:
+                    tags_list = [t.strip() for t in tags.split(",") if t.strip()]
+                    st.markdown("**Tags:** " + ", ".join([f"`{t}`" for t in tags_list]))
+
+                if st.button("Open File", key=f"tag_open_{file_id}"):
+                    st.session_state.selected_file_id = file_id
+                    st.session_state.page = "Files"
+                    st.rerun()
+
+                st.divider()
+
 # ======================================================
 # FILES PAGE
 # ======================================================
@@ -286,6 +319,13 @@ elif st.session_state.page == "Files":
 
         st.subheader("📄 File Details")
 
+        file_info = next((f for f in st.session_state.files_cache if f.get("id") == file_id), None)
+        if file_info and file_info.get("tags"):
+            tags_list = [t.strip() for t in file_info.get("tags").split(",") if t.strip()]
+            if tags_list:
+                st.markdown("**Tags:** " + " ".join([f"`{t}`" for t in tags_list]))
+        st.write("")
+
         mode = st.selectbox("Summary length", ["short", "medium", "long"])
 
         if st.button("Generate Summary"):
@@ -294,7 +334,11 @@ elif st.session_state.page == "Files":
                 params={"mode": mode},
             )
             if r.status_code == 200:
-                st.info(r.json())
+                data = r.json()
+                summary_text = data.get("summary", "No summary available.")
+                st.info(summary_text)
+            else:
+                st.error("Failed to fetch summary")
 
         if st.checkbox("Show full content"):
             r = requests.get(f"{BACKEND_URL}/api/files/{file_id}/content")

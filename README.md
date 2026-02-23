@@ -1,228 +1,210 @@
-🌟 AI File Management System
-An AI‑powered document intelligence platform that enables intelligent document processing, semantic search, summarization, tagging, duplicate detection, merging, and AI‑assisted document rewriting through an interactive Streamlit interface.
+<h1 align="center">🌟 AI File Management System</h1>
 
-🚀 Overview
-The AI File Management System is designed to help users upload, analyze, search, compare, merge, and transform documents intelligently using modern AI techniques.
+<p align="center">
+  <em>An AI‑powered document intelligence platform that enables intelligent document processing, semantic search, summarization, tagging, duplicate detection, merging, and AI‑assisted document rewriting through an interactive Streamlit interface.</em>
+</p>
 
-Core Capabilities
-📄 Upload documents (PDF, DOCX, images)
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.10+-blue.svg" alt="Python Version">
+  <img src="https://img.shields.io/badge/FastAPI-005571?style=flat&logo=fastapi" alt="FastAPI">
+  <img src="https://img.shields.io/badge/Streamlit-FF4B4B?style=flat&logo=streamlit&logoColor=white" alt="Streamlit">
+  <img src="https://img.shields.io/badge/LLM-Groq_LLaMA_3.3-orange" alt="Groq LLaMA">
+</p>
 
-🔍 Extract text using OCR
+---
 
-✨ Generate AI summaries (short / medium / long)
+## 🚀 Overview
 
-🧠 Perform semantic search using embeddings
+The **AI File Management System** is designed to help users upload, analyze, search, compare, merge, and transform documents intelligently using modern AI techniques. 
 
-🔗 Find similar and duplicate documents
+### ✨ Core Capabilities
 
-🏷 Automatically tag documents
+- **📄 Universal Upload:** Support for PDFs, DOCX, and images (PNG, JPG).
+- **🔍 Advanced Layout-Aware OCR:** Precision text extraction using Tesseract that understands flowcharts and graphical blocks.
+- **📝 Dynamic AI Summaries:** Generate short, medium, or long document summaries on the fly.
+- **🧠 Semantic Vectors:** Perform deep meaning-based search using sentence embeddings.
+- **🔗 Similarity & Deduplication:** Automatically find similar and duplicate documents.
+- **🏷️ Auto-Tagging Engine:** Automatically tag documents and filter/search by interactive tags.
+- **🔡 Keyword Frequency Search:** Quickly find the exact file where a keyword appears most frequently.
+- **🧩 Smart Document Merge:** Merge multiple files in sequence into a single clean document.
+- **🤖 AI Document Chatbot:** Chat with an agent to rewrite, shorten, or extract topics.
+- **⬇️ Multi-Format Export:** Download AI outputs as TXT, DOCX, or PDF.
 
-🔡 Perform keyword frequency (word count) search
+> **Workflow:**
+> `Upload` ➔ `Process` ➔ `Search` ➔ `Explore` ➔ `Compare` ➔ `Merge` ➔ `Rewrite` ➔ `Download`
 
-🧩 Merge multiple files into a single document
+---
 
-🤖 AI chatbot for document rewriting, shortening, and topic‑focused extraction
+## 🧩 Development Phases
 
-⬇ Download outputs as TXT, DOCX, or PDF
+<details>
+<summary><b>🌱 Phase 0: Base Version (Foundation)</b></summary>
 
-🖥 Full-featured Streamlit UI
+- ✔️ File upload (PDF, DOCX, Images)
+- ✔️ Advanced layout-aware OCR text extraction using Tesseract
+- ✔️ Store extracted text & metadata in SQLite
+- ✔️ Basic AI summarization
+- ✔️ List and view uploaded files
+</details>
 
-Workflow:
-Upload → Process → Search → Explore → Compare → Merge → Rewrite → Download
+<details>
+<summary><b>🔹 Phase 1: Semantic Embeddings & Vector Search</b></summary>
 
-🧩 Phase‑by‑Phase Development
-🌱 Phase 0 — Base Version (Foundation)
-✔ File upload (PDF, DOCX, Images)
-✔ OCR text extraction using Tesseract
-✔ Store extracted text & metadata in SQLite
-✔ Basic AI summarization
-✔ List and view uploaded files
+- ✔️ Sentence‑Transformers embeddings
+- ✔️ Integrated Qdrant Vector Database
+- ✔️ Chunk‑based embeddings for large documents
+- ✔️ Semantic search returns: Best matching snippet, Document summary, and Similarity score
 
-🔹 Phase 1 — Semantic Embeddings & Vector Search
-✔ Sentence‑Transformers embeddings
-✔ Integrated Qdrant Vector Database
-✔ Chunk‑based embeddings for large documents
-✔ Semantic search returns:
+> **Endpoint**: `GET /api/search?query=text`
+</details>
 
-Best matching snippet
+<details>
+<summary><b>🔹 Phase 2: Dynamic AI Summaries</b></summary>
 
-Document summary
+- ✔️ Powered by Pegasus‑XSUM
+- ✔️ UI controls in Streamlit for length limits
 
-Similarity score
+| Mode | Description | Output |
+| :--- | :--- | :--- |
+| `short` | Ultra‑brief | 1 sentence |
+| `medium` | Balanced | 2 sentences |
+| `long` | Detailed | 4 sentences |
 
-Endpoint
+> **Endpoint**: `GET /api/files/{id}/summary?mode=short|medium|long`
+</details>
 
-GET /api/search?query=text
-🔹 Phase 2 — Dynamic AI Summaries
-✔ Summary modes:
+<details>
+<summary><b>🔹 Phase 3: Similarity & Duplicate Detection</b></summary>
 
-Mode	Description	Output
-short	Ultra‑brief	1 sentence
-medium	Balanced	2 sentences
-long	Detailed	4 sentences
-✔ Powered by Pegasus‑XSUM
-✔ UI control added in Streamlit
+- ✔️ Embedding‑based similarity detection
+- ✔️ High‑threshold duplicate detection algorithms
+- ✔️ Immediate UI actions for similar & duplicate discovery
 
-Endpoint
+> **Endpoints**: `GET /api/files/{id}/similar` | `GET /api/files/{id}/duplicates`
+</details>
 
-GET /api/files/{id}/summary?mode=short|medium|long
-🔹 Phase 3 — Similarity & Duplicate Detection
-✔ Embedding‑based similarity detection
-✔ High‑threshold duplicate detection
-✔ Streamlit actions:
+<details>
+<summary><b>🔹 Phase 4: Auto‑Tagging System</b></summary>
 
-Show similar files
+- ✔️ Keyword extraction from AI summaries
+- ✔️ Visual layout tag UI
+- ✔️ Search and filter files interactively using 'Tag Search' in the UI
+- ✔️ Visually display interactive tags on the File Details page
 
-Show duplicate files
+> **Endpoint**: `GET /api/files/tag/{tag}`
+</details>
 
-Endpoints
+<details>
+<summary><b>🔹 Phase 5: Word Count Search (Keyword Frequency Engine)</b></summary>
 
-GET /api/files/{id}/similar
-GET /api/files/{id}/duplicates
-🔹 Phase 4 — Auto‑Tagging System
-✔ Keyword extraction from summaries
-✔ Tags stored in database
-✔ Filter files using tags
+- ✔️ Finds the file where a keyword appears most frequently across all formats
+- ✔️ Displays full content with dynamic text highlights in the UI
 
-Endpoint
+> **Endpoint**: `GET /api/search-word?query=word`
+</details>
 
-GET /api/files/by-tag?tag=value
-🔹 Phase 5 — Word Count Search (Keyword Frequency Engine)
-✔ Finds the file where a keyword appears most frequently
-✔ Works with:
+<details>
+<summary><b>🔹 Phase 6: File Merge & Export System</b></summary>
 
-PDFs
+- ✔️ Select multiple files from the database to merge chronologically
+- ✔️ Instantly download the merged file as `.txt`, `.docx`, or `.pdf`
 
-DOCX
+> **Endpoint**: `POST /api/files/merge`
+</details>
 
-Scanned PDFs
+<details>
+<summary><b>🔹 Phase 7: AI Document Chatbot (Groq‑Powered)</b></summary>
 
-Images (OCR)
-✔ Displays full content with highlights
+- ✔️ Chat directly with an LLM against your loaded files or fresh local uploads
+- ✔️ Ask AI to summarize, extract data, or rewrite content
+- ✔️ Powered by Groq (LLaMA‑3.3‑70B‑Versatile) for blazing fast inference
+- ✔️ Export generated documents on demand
 
-Endpoint
+> **Endpoints**: `POST /api/chat` | `POST /api/chat/convert`
+</details>
 
-GET /api/search-word?query=word
-🔹 Phase 6 — File Merge & Export System
-✔ Select multiple files from database
-✔ Merge content in selected order
-✔ Save merged file to database
-✔ Download merged file as:
+---
 
-.txt
+## 🖥️ System Architecture
 
-.docx
+```mermaid
+graph TD
+    UI[Streamlit Frontend] <-->|REST API| API[FastAPI Backend]
+    
+    API -->|Metadata & Content| DB[(SQLite DB)]
+    API -->|Embeddings| VDB[(Qdrant Vector DB)]
+    
+    API -.-> OCR[Tesseract OCR]
+    API -.-> SUMM[Pegasus Summarizer]
+```
 
-.pdf
+---
 
-Endpoint
+## ⚙️ Quick Setup Instructions
 
-POST /api/files/merge
-🔹 Phase 7 — AI Document Chatbot (Groq‑Powered)
-✔ Upload document from:
-
-Database
-
-Local system
-✔ Ask AI to:
-
-Shorten documents (e.g., 500 or 1000 words)
-
-Focus on a specific topic
-
-Rewrite content cleanly
-✔ Powered by Groq (LLaMA‑3.3‑70B‑Versatile)
-✔ Download AI‑generated output as TXT / DOCX / PDF
-
-Endpoints
-
-POST /api/chat
-POST /api/chat/convert
-🖥 System Architecture
-+-----------------------+
-|   Streamlit Frontend  |
-+----------+------------+
-           |
-           | REST API
-           v
-+-----------------------------+
-|     FastAPI Backend         |
-| - OCR & Processing          |
-| - Summarization             |
-| - Semantic Search           |
-| - File Merge & Chatbot      |
-+-----------+-----------------+
-            |
-     +------+------+
-     |             |
-     v             v
-+-----------+  +------------------+
-| SQLite DB |  | Qdrant Vector DB |
-| Metadata  |  | Embeddings Store |
-+-----------+  +------------------+
-⚙️ Setup Instructions
-1️⃣ Install Dependencies
+1️⃣ **Install Dependencies**
+```bash
 pip install -r requirements.txt
-2️⃣ Initialize Database
+```
+
+2️⃣ **Initialize Regional Database**
+```bash
 python database/init_db.py
-3️⃣ Start Qdrant (Docker)
+```
+
+3️⃣ **Start Qdrant (Docker)**
+```bash
 docker run -p 6333:6333 qdrant/qdrant
-4️⃣ Run FastAPI Backend
+```
+
+4️⃣ **Run the Backend Services**
+```bash
 uvicorn backend.main:app --reload
-5️⃣ Start Streamlit Frontend
+```
+
+5️⃣ **Launch the User Interface**
+```bash
 streamlit run frontend/app.py
-🔌 API Quick Reference
-📤 Upload File
-POST /api/upload
-🔍 Semantic Search
-GET /api/search?query=text
-🔠 Word Count Search
-GET /api/search-word?query=word
-📝 Summary
-GET /api/files/{id}/summary?mode=short|medium|long
-🧩 Similar Files
-GET /api/files/{id}/similar
-🔁 Duplicate Detection
-GET /api/files/{id}/duplicates
-🏷 Tag Search
-GET /api/files/by-tag?tag=keyword
-🧩 Merge Files
-POST /api/files/merge
-🤖 AI Chatbot
-POST /api/chat
-POST /api/chat/convert
-🧑‍💻 Tech Stack
-Layer	Technology
-Backend	FastAPI
-Frontend	Streamlit
-Database	SQLite
-Vector DB	Qdrant
-Embeddings	Sentence‑Transformers
-Summarization	Pegasus‑XSUM
-AI Chat	Groq (LLaMA‑3.3‑70B)
-OCR	Tesseract
-Language	Python
-👥 Team Members
-Aaron Tom
+```
 
-Aleesha Maria
+---
 
-Anushma Prasad
+## 🔌 API Reference Matrix
 
-Ben Sebastian Joseph
+| Feature | Method | Endpoint |
+| :--- | :---: | :--- |
+| **Upload File** | `POST` | `/api/upload` |
+| **Semantic Search** | `GET` | `/api/search?query=text` |
+| **Word Count Search** | `GET` | `/api/search-word?query=word` |
+| **Dynamic Summary** | `GET` | `/api/files/{id}/summary?mode=short\|medium\|long` |
+| **Similar Files** | `GET` | `/api/files/{id}/similar` |
+| **Duplicates** | `GET` | `/api/files/{id}/duplicates` |
+| **Tag Search** | `GET` | `/api/files/by-tag?tag=keyword` |
+| **Merge Files** | `POST` | `/api/files/merge` |
+| **AI Chat** | `POST` | `/api/chat` |
+| **Export Chat** | `POST` | `/api/chat/convert` |
 
-Christin Toms
+---
 
-🎯 Final Outcome
-A production‑style AI document intelligence system capable of:
+## 🧑‍💻 Tech Stack
 
-✔ Reading PDFs, DOCX files, and images
-✔ OCR‑based text extraction
-✔ AI summarization (short / medium / long)
-✔ Semantic search with embeddings
-✔ Similarity & duplicate detection
-✔ Auto‑tagging
-✔ Keyword‑frequency analysis
-✔ File merging & multi‑format export
-✔ AI‑powered document rewriting
-✔ Full Streamlit user interface
+| Layer | Technology |
+| :--- | :--- |
+| **Backend** | FastApi |
+| **Frontend** | Streamlit |
+| **Database** | SQLite |
+| **Vector Engine** | Qdrant |
+| **Embeddings** | Sentence-Transformers |
+| **Summarization** | Pegasus-XSUM |
+| **AI Intelligent Chat** | Groq (LLaMA-3.3-70B) |
+| **OCR Processing** | Tesseract |
+| **Core Language** | Python |
+
+---
+
+## 👥 Author
+
+**Sole Developer / Single Member Project**
+
+> **🎯 Final Outcome** <br/>
+> A production‑style AI document intelligence system capable of reading mixed formats (PDFs, DOCX, images), structurally preserving flowchart diagram OCR, auto-summarizing, semantically searching vector space, auto-tagging, detecting deduplication, performing keyword analytics, assembling multi-format exports, and hosting an interactive rewrite chat loop all inside a polished GUI.

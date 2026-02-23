@@ -148,3 +148,9 @@ bin/
 *.war
 *.ear
 *.iml
+
+# ==========================
+# Testing & Local Scripts
+# ==========================
+test_*.py
+test.py
