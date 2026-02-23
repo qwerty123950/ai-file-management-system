@@ -206,5 +206,7 @@ streamlit run frontend/app.py
 
 **Sole Developer / Single Member Project**
 
+By: Ben Sebastian Joseph
+
 > **🎯 Final Outcome** <br/>
 > A production‑style AI document intelligence system capable of reading mixed formats (PDFs, DOCX, images), structurally preserving flowchart diagram OCR, auto-summarizing, semantically searching vector space, auto-tagging, detecting deduplication, performing keyword analytics, assembling multi-format exports, and hosting an interactive rewrite chat loop all inside a polished GUI.
