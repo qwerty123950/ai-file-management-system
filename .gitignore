@@ -154,3 +154,14 @@ bin/
 # ==========================
 test_*.py
 test.py
+tests/
+
+# ==========================
+# Unnecessary and Temp Files
+# ==========================
+uploads/
+current_env.txt
+*.~lock.*
+~$*.docx
+*.rtf
+*temp.docx
